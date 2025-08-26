@@ -186,8 +186,7 @@ if (Test-Path $RStudioPath) {
 # Get latest RStudio version from Posit
 Write-Host "   Checking latest RStudio version from Posit..." -ForegroundColor Gray
 $RStudioPage = Invoke-WebRequest -Uri "https://posit.co/download/rstudio-desktop/" -UseBasicParsing
-$pattern = "//download1\.rstudio\.org/electron/windows/RStudio-([^""]+)\.exe"
-if ($RStudioPage.Content -match $pattern) {
+if ($RStudioPage.Content -match '//download1\.rstudio\.org/electron/windows/RStudio-([^"]+)\.exe') {
     $RStudioURL = "https:$($matches[0])"
     $LatestRStudioVersion = $matches[1] -replace '-', '+'
     Write-Host "   Latest RStudio version: $LatestRStudioVersion" -ForegroundColor Gray
@@ -350,6 +349,6 @@ Write-Host "   3. In RStudio, go to: Addins -> Start radiant" -ForegroundColor G
 Write-Host "   4. Radiant will open in your web browser" -ForegroundColor Gray
 Write-Host ""
 if ($env:CI -ne "true") {
-    Write-Host "Press Enter to exit..."
+    Write-Host 'Press Enter to exit...'
     Read-Host
 }

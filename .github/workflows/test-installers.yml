@@ -105,63 +105,54 @@ jobs:
 
       - name: Test script in dry-run mode
         run: |
-          echo "Creating modified test version of script..."
+          echo "Creating test version of script..."
+          echo "TEST MODE - Checking script logic without installing"
+          echo ""
           
-          # Create a test version that doesn't actually install anything
-          cat > test-installer.sh << 'EOF'
-#!/bin/bash
-# Test version - modified for CI
-echo "TEST MODE - Checking script logic without installing"
-echo ""
-
-set -e  # Exit on any error
-
-# Test macOS version check
-echo "Testing macOS version check..."
-macos_version=$(sw_vers -productVersion)
-if [[ $(echo "$macos_version 10.15" | tr " " "\n" | sort -V | head -n1) != "10.15" ]]; then
-    echo "❌ macOS version check failed"
-    exit 1
-fi
-echo "✅ macOS version check passed: $macos_version"
-
-# Test temp directory creation
-TEMP_DIR=$(mktemp -d)
-echo "✅ Temp directory created: $TEMP_DIR"
-
-# Test R version checking
-echo "Testing R version check..."
-LATEST_R_VERSION=$(curl -s "https://cloud.r-project.org/bin/macosx/" | grep -o 'R-[0-9]\+\.[0-9]\+\.[0-9]\+' | head -n1 | cut -d'-' -f2)
-if [[ -n "$LATEST_R_VERSION" ]]; then
-    echo "✅ Latest R version detected: $LATEST_R_VERSION"
-else
-    echo "❌ Could not detect R version"
-    exit 1
-fi
-
-# Test RStudio URL extraction
-echo "Testing RStudio version check..."
-RSTUDIO_PAGE=$(curl -s "https://posit.co/download/rstudio-desktop/")
-RSTUDIO_URL="https:$(echo "$RSTUDIO_PAGE" | grep -o '//download1\.rstudio\.org/electron/macos/RStudio-[^"]*\.dmg' | head -n1)"
-if [[ "$RSTUDIO_URL" != "https:" ]]; then
-    LATEST_RSTUDIO_VERSION=$(echo "$RSTUDIO_URL" | sed 's/.*RStudio-//' | sed 's/\.dmg//' | sed 's/-/+/')
-    echo "✅ Latest RStudio version detected: $LATEST_RSTUDIO_VERSION"
-    echo "✅ Download URL: $RSTUDIO_URL"
-else
-    echo "❌ Could not detect RStudio URL"
-    exit 1
-fi
-
-# Cleanup
-rm -rf "$TEMP_DIR"
-echo "✅ Cleanup successful"
-
-echo ""
-echo "✅ All script logic tests passed!"
-EOF
+          set -e  # Exit on any error
           
-          chmod +x test-installer.sh
-          ./test-installer.sh
+          # Test macOS version check
+          echo "Testing macOS version check..."
+          macos_version=$(sw_vers -productVersion)
+          if [[ $(echo "$macos_version 10.15" | tr " " "\n" | sort -V | head -n1) != "10.15" ]]; then
+              echo "❌ macOS version check failed"
+              exit 1
+          fi
+          echo "✅ macOS version check passed: $macos_version"
+          
+          # Test temp directory creation
+          TEMP_DIR=$(mktemp -d)
+          echo "✅ Temp directory created: $TEMP_DIR"
+          
+          # Test R version checking
+          echo "Testing R version check..."
+          LATEST_R_VERSION=$(curl -s "https://cloud.r-project.org/bin/macosx/" | grep -o 'R-[0-9]\+\.[0-9]\+\.[0-9]\+' | head -n1 | cut -d'-' -f2)
+          if [[ -n "$LATEST_R_VERSION" ]]; then
+              echo "✅ Latest R version detected: $LATEST_R_VERSION"
+          else
+              echo "❌ Could not detect R version"
+              exit 1
+          fi
+          
+          # Test RStudio URL extraction
+          echo "Testing RStudio version check..."
+          RSTUDIO_PAGE=$(curl -s "https://posit.co/download/rstudio-desktop/")
+          RSTUDIO_URL="https:$(echo "$RSTUDIO_PAGE" | grep -o '//download1\.rstudio\.org/electron/macos/RStudio-[^"]*\.dmg' | head -n1)"
+          if [[ "$RSTUDIO_URL" != "https:" ]]; then
+              LATEST_RSTUDIO_VERSION=$(echo "$RSTUDIO_URL" | sed 's/.*RStudio-//' | sed 's/\.dmg//' | sed 's/-/+/')
+              echo "✅ Latest RStudio version detected: $LATEST_RSTUDIO_VERSION"
+              echo "✅ Download URL: $RSTUDIO_URL"
+          else
+              echo "❌ Could not detect RStudio URL"
+              exit 1
+          fi
+          
+          # Cleanup
+          rm -rf "$TEMP_DIR"
+          echo "✅ Cleanup successful"
+          
+          echo ""
+          echo "✅ All script logic tests passed!"
 
       - name: Check required tools availability
         run: |

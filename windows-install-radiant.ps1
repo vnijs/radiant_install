@@ -186,8 +186,7 @@ if (Test-Path $RStudioPath) {
 # Get latest RStudio version from Posit
 Write-Host "   Checking latest RStudio version from Posit..." -ForegroundColor Gray
 $RStudioPage = Invoke-WebRequest -Uri "https://posit.co/download/rstudio-desktop/" -UseBasicParsing
-$pattern = '//download1\.rstudio\.org/electron/windows/RStudio-([^"]+)\.exe'
-if ($RStudioPage.Content -match $pattern) {
+if ($RStudioPage.Content -match '//download1\.rstudio\.org/electron/windows/RStudio-([^"]+)\.exe') {
     $RStudioURL = "https:$($matches[0])"
     $LatestRStudioVersion = $matches[1] -replace '-', '+'
     Write-Host "   Latest RStudio version: $LatestRStudioVersion" -ForegroundColor Gray
@@ -257,43 +256,10 @@ Write-Host ""
 Write-Host "🔧 Step 4: Installing Radiant and R packages..." -ForegroundColor Yellow
 Write-Host "   This may take several minutes..." -ForegroundColor Gray
 
-# Create R script for package installation
-$RScript = @'
-# Set options
-options(HTTPUserAgent = sprintf("R/%s R (%s)", getRversion(), paste(getRversion(), R.version$platform, R.version$arch, R.version$os)))
-repos <- c(CRAN = "https://cloud.r-project.org")
-options(repos = repos)
-
-# Update existing packages
-update.packages(lib.loc = .libPaths()[1], ask = FALSE, type = "binary")
-
-# Install required packages
-cat("Installing Radiant and dependencies ...\n")
-ipkgs <- rownames(installed.packages())
-install <- function(x) {
-  pkgs <- x[!x %in% ipkgs]
-  if (length(pkgs) > 0) {
-    cat(paste("   Installing:", paste(pkgs, collapse = ", "), "\n"))
-    install.packages(pkgs, lib = .libPaths()[1], type = "binary")
-  }
-}
-
-# Install core packages
-install(c("radiant", "miniUI", "webshot", "usethis", "remotes", "tinytex"))
-
-# Install installr for Windows-specific functionality
-install("installr")
-
-# Install PhantomJS for webshot
-cat("Installing PhantomJS for screenshots...\n")
-if (is.null(webshot:::find_phantom())) {
-  webshot::install_phantomjs()
-}
-
-cat("R packages installation complete\n")
-'@
-
-$RScript | Out-File -FilePath "install_packages.R" -Encoding UTF8
+# Download R script for package installation
+Write-Host "   Downloading package installation script..." -ForegroundColor Gray
+Invoke-WebRequest -Uri "https://raw.githubusercontent.com/vnijs/radiant_install/gh-pages/install_packages.R" -OutFile "install_packages.R"
+Check-Success "Download package script"
 
 # Find R executable
 $RExePath = Get-ChildItem "$SystemDrive\R\R-*\bin\R.exe" | Select-Object -First 1
@@ -310,19 +276,11 @@ Write-Host ""
 Write-Host "🔧 Step 5: Installing TinyTeX for PDF reports..." -ForegroundColor Yellow
 Write-Host "   This enables PDF generation in Radiant reports..." -ForegroundColor Gray
 
-$TinyTeXScript = @'
-# Check if pdflatex already exists
-pl <- Sys.which("pdflatex")
-if (nchar(pl) == 0) {
-  cat("Installing TinyTeX...\n")
-  tinytex::install_tinytex()
-  cat("TinyTeX installation complete\n")
-} else {
-  cat("LaTeX already installed, skipping TinyTeX\n")
-}
-'@
+# Download R script for TinyTeX installation
+Write-Host "   Downloading TinyTeX installation script..." -ForegroundColor Gray
+Invoke-WebRequest -Uri "https://raw.githubusercontent.com/vnijs/radiant_install/gh-pages/install_tinytex.R" -OutFile "install_tinytex.R"
+Check-Success "Download TinyTeX script"
 
-$TinyTeXScript | Out-File -FilePath "install_tinytex.R" -Encoding UTF8
 & $RExePath.FullName --slave --no-restore --file=install_tinytex.R
 Check-Success "TinyTeX installation"
 Write-Host ""

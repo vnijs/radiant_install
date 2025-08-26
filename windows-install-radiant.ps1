@@ -296,7 +296,10 @@ Write-Host "🧹 Cleaned up temporary files" -ForegroundColor Gray
 Write-Host ""
 
 # Final instructions
-Write-Host "🎉 Installation Complete!" -ForegroundColor Green
+Write-Host "Installation Complete!" -ForegroundColor Green
+Write-Host "Done"
+# Everything below is commented out for debugging
+<#
 Write-Host "========================" -ForegroundColor Green
 Write-Host ""
 Write-Host "✅ R installed in $SystemDrive\R" -ForegroundColor Green
@@ -311,7 +314,8 @@ Write-Host "   2. Open RStudio from Start Menu" -ForegroundColor Gray
 Write-Host "   3. In RStudio, go to: Addins -> Start radiant" -ForegroundColor Gray
 Write-Host "   4. Radiant will open in your web browser" -ForegroundColor Gray
 Write-Host ""
-# if ($env:CI -ne "true") {
-#     Write-Host "Press Enter to exit..."
-#     Read-Host
-# }
+if ($env:CI -ne "true") {
+    Write-Host "Press Enter to exit..."
+    Read-Host
+}
+#>

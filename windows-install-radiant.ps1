@@ -52,10 +52,15 @@ if (Test-Path "$env:ProgramFiles\R\R-*\bin\R.exe") {
     Write-Host "   This avoids permission issues with package installation." -ForegroundColor Gray
     Write-Host ""
     
-    # Ask about R experience
+    # Ask about R experience (auto-answer N in CI)
     $response = ""
-    while ($response -notmatch "^[YyNn]$") {
-        $response = Read-Host "   Have you used R successfully from this location before? (Y/N)"
+    if ($env:CI -eq "true") {
+        $response = "N"
+        Write-Host "   CI Mode: Auto-answering 'N' to reinstall R in correct location" -ForegroundColor Gray
+    } else {
+        while ($response -notmatch "^[YyNn]$") {
+            $response = Read-Host "   Have you used R successfully from this location before? (Y/N)"
+        }
     }
     
     if ($response -match "^[Yy]$") {
@@ -343,5 +348,7 @@ Write-Host "   2. Open RStudio from Start Menu" -ForegroundColor Gray
 Write-Host "   3. In RStudio, go to: Addins → Start radiant" -ForegroundColor Gray
 Write-Host "   4. Radiant will open in your web browser" -ForegroundColor Gray
 Write-Host ""
-Write-Host "Press Enter to exit..."
-Read-Host
+if ($env:CI -ne "true") {
+    Write-Host "Press Enter to exit..."
+    Read-Host
+}

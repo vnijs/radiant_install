@@ -3,9 +3,6 @@ options(HTTPUserAgent = sprintf("R/%s R (%s)", getRversion(), paste(getRversion(
 repos <- c(CRAN = "https://cloud.r-project.org")
 options(repos = repos)
 
-# Update existing packages
-update.packages(lib.loc = .libPaths()[1], ask = FALSE, type = "binary")
-
 # Install required packages
 cat("Installing Radiant and dependencies ...\n")
 ipkgs <- rownames(installed.packages())
@@ -19,9 +16,6 @@ install <- function(x) {
 
 # Install core packages
 install(c("radiant", "miniUI", "webshot", "usethis", "remotes", "tinytex"))
-
-# Install installr for Windows-specific functionality
-install("installr")
 
 # Install PhantomJS for webshot
 cat("Installing PhantomJS for screenshots...\n")

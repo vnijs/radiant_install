@@ -4,7 +4,8 @@
 # Require Administrator privileges
 if (-NOT ([Security.Principal.WindowsPrincipal] [Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole] "Administrator")) {
     Write-Host "This script requires Administrator privileges. Restarting as Administrator..." -ForegroundColor Yellow
-    Start-Process powershell.exe "-NoProfile -ExecutionPolicy Bypass -File `"$PSCommandPath`"" -Verb RunAs
+    # Add -NoExit to keep the admin window open
+    Start-Process powershell.exe "-NoExit -NoProfile -ExecutionPolicy Bypass -File `"$PSCommandPath`"" -Verb RunAs
     exit
 }
 
@@ -18,16 +19,16 @@ $ErrorActionPreference = "Stop"
 # Create temp directory
 $TEMP_DIR = New-TemporaryFile | ForEach-Object { Remove-Item $_; New-Item -ItemType Directory -Path $_ }
 Set-Location $TEMP_DIR
-Write-Host "📁 Working in temporary directory: $TEMP_DIR" -ForegroundColor Gray
+Write-Host "Working in temporary directory: $TEMP_DIR" -ForegroundColor Gray
 Write-Host ""
 
 # Function to check success
 function Check-Success {
     param($Message)
     if ($LASTEXITCODE -eq 0 -or $?) {
-        Write-Host "✅ $Message successful" -ForegroundColor Green
+        Write-Host "[OK] $Message successful" -ForegroundColor Green
     } else {
-        Write-Host "❌ $Message failed" -ForegroundColor Red
+        Write-Host "[ERROR] $Message failed" -ForegroundColor Red
         exit 1
     }
 }
@@ -36,7 +37,7 @@ function Check-Success {
 $SystemDrive = $env:SystemDrive
 
 # Check and Install R
-Write-Host "🔧 Step 1: Checking R installation..." -ForegroundColor Yellow
+Write-Host "Step 1: Checking R installation..." -ForegroundColor Yellow
 
 # Get current R version if installed
 $CurrentRVersion = $null
@@ -46,7 +47,7 @@ $RInProgramFiles = $false
 # Check if R is in Program Files (bad location)
 if (Test-Path "$env:ProgramFiles\R\R-*\bin\R.exe") {
     $RInProgramFiles = $true
-    Write-Host "⚠️  R is installed in Program Files - this can cause problems!" -ForegroundColor Yellow
+    Write-Host "[WARNING] R is installed in Program Files - this can cause problems!" -ForegroundColor Yellow
     Write-Host ""
     Write-Host "   R works best when installed in $SystemDrive\R instead of Program Files." -ForegroundColor Gray
     Write-Host "   This avoids permission issues with package installation." -ForegroundColor Gray
@@ -70,8 +71,11 @@ if (Test-Path "$env:ProgramFiles\R\R-*\bin\R.exe") {
         # Try to get version from Program Files location
         $RProgramFilesPath = Get-ChildItem "$env:ProgramFiles\R\R-*\bin\R.exe" | Select-Object -First 1
         if ($RProgramFilesPath) {
-            $VersionOutput = & $RProgramFilesPath.FullName --version 2>&1
-            if ($VersionOutput -match "R version (\d+\.\d+\.\d+)") {
+            # Use cmd to avoid PowerShell treating stderr as error
+            $VersionOutput = cmd /c "`"$($RProgramFilesPath.FullName)`" --version 2>&1"
+            # Join array output to string
+            $VersionString = $VersionOutput -join " "
+            if ($VersionString -match "R version (\d+\.\d+\.\d+)") {
                 $CurrentRVersion = $matches[1]
                 Write-Host "   Current R version: $CurrentRVersion (in Program Files)" -ForegroundColor Gray
             }
@@ -85,8 +89,11 @@ if (Test-Path "$env:ProgramFiles\R\R-*\bin\R.exe") {
 if (Test-Path $RPath) {
     $RExe = Get-ChildItem $RPath | Select-Object -First 1
     if ($RExe) {
-        $VersionOutput = & $RExe.FullName --version 2>&1
-        if ($VersionOutput -match "R version (\d+\.\d+\.\d+)") {
+        # Use cmd to avoid PowerShell treating stderr as error
+        $VersionOutput = cmd /c "`"$($RExe.FullName)`" --version 2>&1"
+        # Join array output to string
+        $VersionString = $VersionOutput -join " "
+        if ($VersionString -match "R version (\d+\.\d+\.\d+)") {
             $CurrentRVersion = $matches[1]
             Write-Host "   Current R version: $CurrentRVersion (in $SystemDrive\R)" -ForegroundColor Gray
         }
@@ -106,6 +113,7 @@ try {
 } catch {
     if ($_.Exception.Response.StatusCode -eq 302) {
         $RURL = $_.Exception.Response.Headers.Location.ToString()
+        Write-Host "Redirect URL: $RURL"
         if ($RURL -match "R-(\d+\.\d+\.\d+)-win.exe") {
             $LatestRVersion = $matches[1]
             Write-Host "   Latest R version: $LatestRVersion" -ForegroundColor Gray
@@ -126,7 +134,7 @@ if (-not $RURL) {
 }
 
 if ($CurrentRVersion -eq $LatestRVersion -and -not $RInProgramFiles) {
-    Write-Host "✅ R is already up to date (version $CurrentRVersion)" -ForegroundColor Green
+    Write-Host "[OK] R is already up to date (version $CurrentRVersion)" -ForegroundColor Green
 } else {
     if ($RInProgramFiles) {
         Write-Host "   R needs to be reinstalled in the correct location" -ForegroundColor Yellow
@@ -147,7 +155,7 @@ if ($CurrentRVersion -eq $LatestRVersion -and -not $RInProgramFiles) {
 
     Write-Host "   Downloading R installer from CRAN..." -ForegroundColor Gray
     if (-not $RURL) {
-        Write-Host "❌ Could not determine R download URL" -ForegroundColor Red
+        Write-Host "[ERROR] Could not determine R download URL" -ForegroundColor Red
         exit 1
     }
     Invoke-WebRequest -Uri $RURL -OutFile "R-installer.exe"
@@ -170,15 +178,15 @@ if ($CurrentRVersion -eq $LatestRVersion -and -not $RInProgramFiles) {
 Write-Host ""
 
 # Check and Install RStudio
-Write-Host "🔧 Step 2: Checking RStudio installation..." -ForegroundColor Yellow
+Write-Host "Step 2: Checking RStudio installation..." -ForegroundColor Yellow
 
 # Get current RStudio version if installed
 $CurrentRStudioVersion = $null
-$RStudioPath = "${env:ProgramFiles}\RStudio\resources\app\.webpack\desktop-info.json"
-if (Test-Path $RStudioPath) {
-    $DesktopInfo = Get-Content $RStudioPath | ConvertFrom-Json
-    if ($DesktopInfo.version) {
-        $CurrentRStudioVersion = $DesktopInfo.version -replace '-', '+'
+$RStudioExePath = "${env:ProgramFiles}\RStudio\rstudio.exe"
+if (Test-Path $RStudioExePath) {
+    $VersionInfo = (Get-Item $RStudioExePath).VersionInfo
+    if ($VersionInfo.ProductVersion) {
+        $CurrentRStudioVersion = $VersionInfo.ProductVersion
         Write-Host "   Current RStudio version: $CurrentRStudioVersion" -ForegroundColor Gray
     }
 }
@@ -186,24 +194,33 @@ if (Test-Path $RStudioPath) {
 # Get latest RStudio version from Posit
 Write-Host "   Checking latest RStudio version from Posit..." -ForegroundColor Gray
 $RStudioPage = Invoke-WebRequest -Uri "https://posit.co/download/rstudio-desktop/" -UseBasicParsing
-$pattern = '//download1\.rstudio\.org/electron/windows/RStudio-[\w\.\-]+\.exe'
+$pattern = '//download1\.rstudio\.org/electron/windows/RStudio-([\d\.]+)-(\d+)\.exe'
 if ($RStudioPage.Content -match $pattern) {
-    $RStudioURL = "https:$($matches[0])"
-    $VersionMatch = $matches[0] -match 'RStudio-([^\.]+)\.exe'
-    if ($VersionMatch) {
-        $LatestRStudioVersion = $matches[1] -replace '-', '+'
-        Write-Host "   Latest RStudio version: $LatestRStudioVersion" -ForegroundColor Gray
-    }
+    $RStudioURL = "https://download1.rstudio.org/electron/windows/RStudio-$($matches[1])-$($matches[2]).exe"
+    # Build version string from pattern match
+    $LatestRStudioVersion = "$($matches[1])+$($matches[2])"
+    Write-Host "   Latest RStudio version: $LatestRStudioVersion" -ForegroundColor Gray
 }
 
-if ($CurrentRStudioVersion -eq $LatestRStudioVersion) {
-    Write-Host "✅ RStudio is already up to date (version $CurrentRStudioVersion)" -ForegroundColor Green
+if ($CurrentRStudioVersion -and $LatestRStudioVersion -and ($CurrentRStudioVersion -eq $LatestRStudioVersion)) {
+    Write-Host "[OK] RStudio is already up to date (version $CurrentRStudioVersion)" -ForegroundColor Green
 } else {
+    if (-not $LatestRStudioVersion) {
+        Write-Host "[ERROR] Could not determine latest RStudio version" -ForegroundColor Red
+        exit 1
+    }
+    
     if ($CurrentRStudioVersion) {
         Write-Host "   RStudio update available: $CurrentRStudioVersion -> $LatestRStudioVersion" -ForegroundColor Yellow
+    } else {
+        Write-Host "   RStudio not installed, will install version $LatestRStudioVersion" -ForegroundColor Yellow
     }
 
     Write-Host "   Downloading RStudio from Posit..." -ForegroundColor Gray
+    if (-not $RStudioURL) {
+        Write-Host "[ERROR] Could not determine RStudio download URL" -ForegroundColor Red
+        exit 1
+    }
     Invoke-WebRequest -Uri $RStudioURL -OutFile "RStudio-installer.exe"
     Check-Success "RStudio download"
 
@@ -214,7 +231,7 @@ if ($CurrentRStudioVersion -eq $LatestRStudioVersion) {
 Write-Host ""
 
 # Check and Install 7-Zip
-Write-Host "🔧 Step 3: Checking 7-Zip installation..." -ForegroundColor Yellow
+Write-Host "Step 3: Checking 7-Zip installation..." -ForegroundColor Yellow
 
 $7ZipInstalled = $false
 $7ZipPaths = @(
@@ -225,7 +242,7 @@ $7ZipPaths = @(
 foreach ($path in $7ZipPaths) {
     if (Test-Path $path) {
         $7ZipInstalled = $true
-        Write-Host "✅ 7-Zip is already installed" -ForegroundColor Green
+        Write-Host "[OK] 7-Zip is already installed" -ForegroundColor Green
         break
     }
 }
@@ -257,7 +274,7 @@ if (-not $7ZipInstalled) {
 Write-Host ""
 
 # Install R packages
-Write-Host "🔧 Step 4: Installing Radiant and R packages..." -ForegroundColor Yellow
+Write-Host "Step 4: Installing Radiant and R packages..." -ForegroundColor Yellow
 Write-Host "   This may take several minutes..." -ForegroundColor Gray
 
 # Download R script for package installation
@@ -271,13 +288,13 @@ if ($RExePath) {
     & $RExePath.FullName --slave --no-restore --file=install_packages.R
     Check-Success "R packages installation"
 } else {
-    Write-Host "❌ Could not find R executable" -ForegroundColor Red
+    Write-Host "[ERROR] Could not find R executable" -ForegroundColor Red
     exit 1
 }
 Write-Host ""
 
 # Install TinyTeX
-Write-Host "🔧 Step 5: Installing TinyTeX for PDF reports..." -ForegroundColor Yellow
+Write-Host "Step 5: Installing TinyTeX for PDF reports..." -ForegroundColor Yellow
 Write-Host "   This enables PDF generation in Radiant reports..." -ForegroundColor Gray
 
 # Download R script for TinyTeX installation
@@ -292,30 +309,17 @@ Write-Host ""
 # Cleanup
 Set-Location $env:TEMP
 Remove-Item -Path $TEMP_DIR -Recurse -Force
-Write-Host "🧹 Cleaned up temporary files" -ForegroundColor Gray
+Write-Host "Cleaned up temporary files" -ForegroundColor Gray
 Write-Host ""
 
 # Final instructions
 Write-Host "Installation Complete!" -ForegroundColor Green
-Write-Host "Done"
-# Everything below is commented out for debugging
-<#
 Write-Host "========================" -ForegroundColor Green
 Write-Host ""
-Write-Host "✅ R installed in $SystemDrive\R" -ForegroundColor Green
-Write-Host "✅ RStudio installed and ready" -ForegroundColor Green
-Write-Host "✅ Radiant packages installed" -ForegroundColor Green
-Write-Host "✅ 7-Zip installed for compression" -ForegroundColor Green
-Write-Host "✅ TinyTeX installed for PDF reports" -ForegroundColor Green
-Write-Host ""
-Write-Host "📋 Next Steps:" -ForegroundColor Cyan
-Write-Host "   1. Close this window" -ForegroundColor Gray
-Write-Host "   2. Open RStudio from Start Menu" -ForegroundColor Gray
-Write-Host "   3. In RStudio, go to: Addins -> Start radiant" -ForegroundColor Gray
-Write-Host "   4. Radiant will open in your web browser" -ForegroundColor Gray
-Write-Host ""
+
+# Pause at the end so user can see results
 if ($env:CI -ne "true") {
-    Write-Host "Press Enter to exit..."
+    Write-Host ""
+    Write-Host "Press Enter to close this window..." -ForegroundColor Yellow
     Read-Host
 }
-#>

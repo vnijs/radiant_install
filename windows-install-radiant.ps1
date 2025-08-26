@@ -51,7 +51,7 @@ if (Test-Path "$env:ProgramFiles\R\R-*\bin\R.exe") {
     Write-Host "   R works best when installed in $SystemDrive\R instead of Program Files." -ForegroundColor Gray
     Write-Host "   This avoids permission issues with package installation." -ForegroundColor Gray
     Write-Host ""
-    
+
     # Ask about R experience (auto-answer N in CI)
     $response = ""
     if ($env:CI -eq "true") {
@@ -62,11 +62,11 @@ if (Test-Path "$env:ProgramFiles\R\R-*\bin\R.exe") {
             $response = Read-Host "   Have you used R successfully from this location before? (Y/N)"
         }
     }
-    
+
     if ($response -match "^[Yy]$") {
         Write-Host "   Proceeding with existing R installation..." -ForegroundColor Gray
         $RInProgramFiles = $false  # User says it works, so don't force reinstall
-        
+
         # Try to get version from Program Files location
         $RProgramFilesPath = Get-ChildItem "$env:ProgramFiles\R\R-*\bin\R.exe" | Select-Object -First 1
         if ($RProgramFilesPath) {
@@ -131,7 +131,7 @@ if ($CurrentRVersion -eq $LatestRVersion -and -not $RInProgramFiles) {
     if ($RInProgramFiles) {
         Write-Host "   R needs to be reinstalled in the correct location" -ForegroundColor Yellow
         Write-Host "   Please uninstall R from Program Files first, then re-run this script" -ForegroundColor Red
-        Write-Host "" 
+        Write-Host ""
         Write-Host "   To uninstall R:" -ForegroundColor Yellow
         Write-Host "   1. Open Control Panel -> Programs -> Uninstall a program" -ForegroundColor Gray
         Write-Host "   2. Find R for Windows and uninstall it" -ForegroundColor Gray
@@ -140,11 +140,11 @@ if ($CurrentRVersion -eq $LatestRVersion -and -not $RInProgramFiles) {
         Read-Host "Press Enter to exit"
         exit 1
     }
-    
+
     if ($CurrentRVersion) {
         Write-Host "   R update available: $CurrentRVersion -> $LatestRVersion" -ForegroundColor Yellow
     }
-    
+
     Write-Host "   Downloading R installer from CRAN..." -ForegroundColor Gray
     if (-not $RURL) {
         Write-Host "❌ Could not determine R download URL" -ForegroundColor Red
@@ -152,12 +152,12 @@ if ($CurrentRVersion -eq $LatestRVersion -and -not $RInProgramFiles) {
     }
     Invoke-WebRequest -Uri $RURL -OutFile "R-installer.exe"
     Check-Success "R download"
-    
+
     Write-Host "   Installing R to $SystemDrive\R..." -ForegroundColor Gray
     # Silent install with custom directory
     Start-Process -FilePath "R-installer.exe" -ArgumentList "/VERYSILENT /DIR=`"$SystemDrive\R\R-$LatestRVersion`"" -Wait
     Check-Success "R installation"
-    
+
     # Add R to PATH if not already there
     $RBinPath = "$SystemDrive\R\R-$LatestRVersion\bin\x64"
     $CurrentPath = [Environment]::GetEnvironmentVariable("Path", "Machine")
@@ -202,11 +202,11 @@ if ($CurrentRStudioVersion -eq $LatestRStudioVersion) {
     if ($CurrentRStudioVersion) {
         Write-Host "   RStudio update available: $CurrentRStudioVersion -> $LatestRStudioVersion" -ForegroundColor Yellow
     }
-    
+
     Write-Host "   Downloading RStudio from Posit..." -ForegroundColor Gray
     Invoke-WebRequest -Uri $RStudioURL -OutFile "RStudio-installer.exe"
     Check-Success "RStudio download"
-    
+
     Write-Host "   Installing RStudio..." -ForegroundColor Gray
     Start-Process -FilePath "RStudio-installer.exe" -ArgumentList "/S" -Wait
     Check-Success "RStudio installation"
@@ -219,7 +219,7 @@ Write-Host "🔧 Step 3: Checking 7-Zip installation..." -ForegroundColor Yellow
 $7ZipInstalled = $false
 $7ZipPaths = @(
     "${env:ProgramFiles}\7-Zip\7z.exe",
-    "${env:"ProgramFiles(x86)"}\7-Zip\7z.exe"
+    "${env:ProgramFiles(x86)}\7-Zip\7z.exe"
 )
 
 foreach ($path in $7ZipPaths) {
@@ -235,18 +235,18 @@ if (-not $7ZipInstalled) {
     $7ZipURL = "https://www.7-zip.org/a/7z2501-x64.exe"
     Invoke-WebRequest -Uri $7ZipURL -OutFile "7zip-installer.exe"
     Check-Success "7-Zip download"
-    
+
     Write-Host "   Installing 7-Zip..." -ForegroundColor Gray
     Start-Process -FilePath "7zip-installer.exe" -ArgumentList "/S" -Wait
     Check-Success "7-Zip installation"
-    
+
     # Add 7-Zip to PATH
     if (Test-Path "${env:ProgramFiles}\7-Zip") {
         $7ZipPath = "${env:ProgramFiles}\7-Zip"
     } else {
-        $7ZipPath = "${env:"ProgramFiles(x86)"}\7-Zip"
+        $7ZipPath = "${env:ProgramFiles(x86)}\7-Zip"
     }
-    
+
     $CurrentPath = [Environment]::GetEnvironmentVariable("Path", "Machine")
     if ($CurrentPath -notlike "*$7ZipPath*") {
         [Environment]::SetEnvironmentVariable("Path", "$CurrentPath;$7ZipPath", "Machine")

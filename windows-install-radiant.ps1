@@ -1,4 +1,3 @@
-# Radiant Installation Script for Windows
 # Rady @ UCSD - Automated installer for R, RStudio, and Radiant packages on Windows
 
 # Require Administrator privileges
@@ -82,6 +81,13 @@ if (Test-Path "$env:ProgramFiles\R\R-*\bin\R.exe") {
         }
     } else {
         Write-Host "   R should be reinstalled in $SystemDrive\R for best results" -ForegroundColor Yellow
+        # In CI mode, we'll proceed despite R being in Program Files
+        if ($env:CI -eq "true") {
+            Write-Host "   CI Mode: Proceeding with installation to $SystemDrive\R" -ForegroundColor Gray
+            Write-Host "   Note: Existing R in Program Files will be ignored" -ForegroundColor Gray
+            # Don't mark as "in Program Files" so we proceed with install
+            $RInProgramFiles = $false
+        }
     }
 }
 
@@ -136,7 +142,8 @@ if (-not $RURL) {
 if ($CurrentRVersion -eq $LatestRVersion -and -not $RInProgramFiles) {
     Write-Host "[OK] R is already up to date (version $CurrentRVersion)" -ForegroundColor Green
 } else {
-    if ($RInProgramFiles) {
+    if ($RInProgramFiles -and $env:CI -ne "true") {
+        # Only exit in non-CI mode
         Write-Host "   R needs to be reinstalled in the correct location" -ForegroundColor Yellow
         Write-Host "   Please uninstall R from Program Files first, then re-run this script" -ForegroundColor Red
         Write-Host ""
@@ -209,7 +216,7 @@ if ($CurrentRStudioVersion -and $LatestRStudioVersion -and ($CurrentRStudioVersi
         Write-Host "[ERROR] Could not determine latest RStudio version" -ForegroundColor Red
         exit 1
     }
-    
+
     if ($CurrentRStudioVersion) {
         Write-Host "   RStudio update available: $CurrentRStudioVersion -> $LatestRStudioVersion" -ForegroundColor Yellow
     } else {

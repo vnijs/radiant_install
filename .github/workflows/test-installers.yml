@@ -169,3 +169,143 @@ jobs:
           
           # Check PowerShell version
           Write-Host "PowerShell version: $($PSVersionTable.PSVersion)"
+
+  test-macos-full-install:
+    runs-on: macos-latest
+    name: Test macOS Full Installation
+    # Only run full install on manual trigger or main branch
+    if: github.event_name == 'workflow_dispatch' || (github.event_name == 'push' && github.ref == 'refs/heads/main')
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Run full macOS installation
+        run: |
+          echo "Running FULL macOS installation test..."
+          echo "This will actually install R, RStudio, and packages"
+          echo ""
+          
+          # Make script executable
+          chmod +x macos-install-radiant.sh
+          
+          # Run the installation script
+          # In CI, we may need to handle sudo differently
+          export CI=true
+          ./macos-install-radiant.sh
+          
+      - name: Verify installations
+        run: |
+          echo "Verifying installations..."
+          
+          # Check R installation
+          if command -v R &> /dev/null; then
+              R_VERSION=$(R --version 2>/dev/null | head -n1)
+              echo "✅ R installed: $R_VERSION"
+          else
+              echo "❌ R not found"
+              exit 1
+          fi
+          
+          # Check RStudio installation
+          if [ -d "/Applications/RStudio.app" ]; then
+              echo "✅ RStudio installed in /Applications"
+              if [ -f "/Applications/RStudio.app/Contents/Info.plist" ]; then
+                  RSTUDIO_VERSION=$(defaults read /Applications/RStudio.app/Contents/Info CFBundleShortVersionString 2>/dev/null)
+                  echo "   Version: $RSTUDIO_VERSION"
+              fi
+          else
+              echo "❌ RStudio not found in /Applications"
+              exit 1
+          fi
+          
+          # Check if radiant package is installed
+          R -e "if ('radiant' %in% rownames(installed.packages())) cat('✅ Radiant package installed\n') else stop('❌ Radiant package not found')"
+          
+          # Check if pdflatex is available (from TinyTeX)
+          if command -v pdflatex &> /dev/null; then
+              echo "✅ LaTeX (pdflatex) is available"
+              pdflatex --version | head -n1
+          else
+              echo "⚠️  LaTeX (pdflatex) not found (TinyTeX might not be installed)"
+          fi
+          
+          echo ""
+          echo "✅ Full macOS installation test completed successfully!"
+
+  test-macos:
+    runs-on: macos-latest
+    name: Test macOS Installer
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Test bash script syntax
+        run: |
+          echo "Testing bash script syntax..."
+          bash -n macos-install-radiant.sh
+          echo "✅ Script syntax is valid"
+
+      - name: Test script logic (dry-run)
+        run: |
+          echo "Testing script logic without installing..."
+          
+          # Test macOS version check
+          echo "Testing macOS version check..."
+          macos_version=$(sw_vers -productVersion)
+          if [[ $(echo "$macos_version 10.15" | tr " " "\n" | sort -V | head -n1) != "10.15" ]]; then
+              echo "❌ macOS version check failed"
+              exit 1
+          fi
+          echo "✅ macOS version check passed: $macos_version"
+          
+          # Test R version detection
+          echo "Testing R version detection from CRAN..."
+          LATEST_R_VERSION=$(curl -s "https://cloud.r-project.org/bin/macosx/" | grep -o 'R-[0-9]\+\.[0-9]\+\.[0-9]\+' | head -n1 | cut -d'-' -f2)
+          if [[ -n "$LATEST_R_VERSION" ]]; then
+              echo "✅ Latest R version detected: $LATEST_R_VERSION"
+          else
+              echo "❌ Could not detect R version"
+              exit 1
+          fi
+          
+          # Test RStudio URL extraction
+          echo "Testing RStudio version detection..."
+          RSTUDIO_PAGE=$(curl -s "https://posit.co/download/rstudio-desktop/")
+          RSTUDIO_URL="https:$(echo "$RSTUDIO_PAGE" | grep -o '//download1\.rstudio\.org/electron/macos/RStudio-[^"]*\.dmg' | head -n1)"
+          if [[ "$RSTUDIO_URL" != "https:" ]] && [[ -n "$RSTUDIO_URL" ]]; then
+              echo "✅ RStudio URL detected: $RSTUDIO_URL"
+          else
+              echo "❌ Could not detect RStudio URL"
+              exit 1
+          fi
+          
+          echo ""
+          echo "✅ All macOS script logic tests passed!"
+
+      - name: Check required tools availability
+        run: |
+          echo "Checking for required macOS tools..."
+          
+          # Check for curl
+          if command -v curl &> /dev/null; then
+              echo "✅ curl is available"
+          else
+              echo "❌ curl is not available"
+              exit 1
+          fi
+          
+          # Check for hdiutil (for mounting DMGs)
+          if command -v hdiutil &> /dev/null; then
+              echo "✅ hdiutil is available"
+          else
+              echo "❌ hdiutil is not available"
+              exit 1
+          fi
+          
+          # Check for sw_vers
+          if command -v sw_vers &> /dev/null; then
+              echo "✅ sw_vers is available: $(sw_vers -productVersion)"
+          else
+              echo "❌ sw_vers is not available"
+              exit 1
+          fi

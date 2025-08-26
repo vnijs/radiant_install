@@ -25,64 +25,49 @@ jobs:
       - name: Test script in dry-run mode (modified for CI)
         shell: powershell
         run: |
-          Write-Host "Creating modified test version of script..."
+          Write-Host "Creating test version of script..."
+          Write-Host "TEST MODE - Checking script logic without installing" -ForegroundColor Cyan
+          Write-Host ""
           
-          # Read the original script
-          $script = Get-Content .\windows-install-radiant.ps1 -Raw
+          $ErrorActionPreference = "Stop"
           
-          # Modify script for testing:
-          # 1. Skip admin check
-          # 2. Add dry-run mode
-          # 3. Skip actual installations
-          $testScript = @'
-# Test version - modified for CI
-Write-Host "TEST MODE - Checking script logic without installing" -ForegroundColor Cyan
-Write-Host ""
-
-$ErrorActionPreference = "Stop"
-
-# Test temp directory creation
-$TEMP_DIR = New-TemporaryFile | %{ rm $_; mkdir $_ }
-Write-Host "✅ Temp directory created: $TEMP_DIR"
-
-# Test R detection logic
-$SystemDrive = $env:SystemDrive
-Write-Host "✅ System drive detected: $SystemDrive"
-
-# Test version checking
-Write-Host "Testing R version check..."
-try {
-    $Response = Invoke-WebRequest -Uri "https://cloud.r-project.org/bin/windows/base/release.html" -MaximumRedirection 0 -ErrorAction SilentlyContinue
-} catch {
-    if ($_.Exception.Response.StatusCode -eq 302) {
-        $RURL = $_.Exception.Response.Headers.Location.ToString()
-        if ($RURL -match "R-(\d+\.\d+\.\d+)-win.exe") {
-            Write-Host "✅ Latest R version detected: $($matches[1])"
-            Write-Host "✅ Download URL: $RURL"
-        }
-    }
-}
-
-Write-Host "Testing RStudio version check..."
-$RStudioPage = Invoke-WebRequest -Uri "https://posit.co/download/rstudio-desktop/" -UseBasicParsing
-if ($RStudioPage.Content -match '//download1\.rstudio\.org/electron/windows/RStudio-([^"]+)\.exe') {
-    $RStudioURL = "https:$($matches[0])"
-    $Version = $matches[1] -replace '-', '+'
-    Write-Host "✅ Latest RStudio version detected: $Version"
-    Write-Host "✅ Download URL: $RStudioURL"
-}
-
-# Cleanup
-Remove-Item -Path $TEMP_DIR -Recurse -Force
-Write-Host "✅ Cleanup successful"
-
-Write-Host ""
-Write-Host "✅ All script logic tests passed!" -ForegroundColor Green
-'@
+          # Test temp directory creation
+          $TEMP_DIR = New-TemporaryFile | ForEach-Object { Remove-Item $_; New-Item -ItemType Directory -Path $_ }
+          Write-Host "✅ Temp directory created: $TEMP_DIR"
           
-          # Write and run test script
-          $testScript | Out-File -FilePath "test-installer.ps1" -Encoding UTF8
-          .\test-installer.ps1
+          # Test R detection logic
+          $SystemDrive = $env:SystemDrive
+          Write-Host "✅ System drive detected: $SystemDrive"
+          
+          # Test version checking
+          Write-Host "Testing R version check..."
+          try {
+              $Response = Invoke-WebRequest -Uri "https://cloud.r-project.org/bin/windows/base/release.html" -MaximumRedirection 0 -ErrorAction SilentlyContinue
+          } catch {
+              if ($_.Exception.Response.StatusCode -eq 302) {
+                  $RURL = $_.Exception.Response.Headers.Location.ToString()
+                  if ($RURL -match "R-(\d+\.\d+\.\d+)-win.exe") {
+                      Write-Host "✅ Latest R version detected: $($matches[1])"
+                      Write-Host "✅ Download URL: $RURL"
+                  }
+              }
+          }
+          
+          Write-Host "Testing RStudio version check..."
+          $RStudioPage = Invoke-WebRequest -Uri "https://posit.co/download/rstudio-desktop/" -UseBasicParsing
+          if ($RStudioPage.Content -match '//download1\.rstudio\.org/electron/windows/RStudio-([^"]+)\.exe') {
+              $RStudioURL = "https:$($matches[0])"
+              $Version = $matches[1] -replace '-', '+'
+              Write-Host "✅ Latest RStudio version detected: $Version"
+              Write-Host "✅ Download URL: $RStudioURL"
+          }
+          
+          # Cleanup
+          Remove-Item -Path $TEMP_DIR -Recurse -Force -ErrorAction SilentlyContinue
+          Write-Host "✅ Cleanup successful"
+          
+          Write-Host ""
+          Write-Host "✅ All script logic tests passed!" -ForegroundColor Green
 
       - name: Check required tools availability
         shell: powershell

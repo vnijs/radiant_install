@@ -345,7 +345,7 @@ Write-Host ""
 Write-Host "📋 Next Steps:" -ForegroundColor Cyan
 Write-Host "   1. Close this window" -ForegroundColor Gray
 Write-Host "   2. Open RStudio from Start Menu" -ForegroundColor Gray
-Write-Host "   3. In RStudio, go to: Addins → Start radiant" -ForegroundColor Gray
+Write-Host "   3. In RStudio, go to: Addins -> Start radiant" -ForegroundColor Gray
 Write-Host "   4. Radiant will open in your web browser" -ForegroundColor Gray
 Write-Host ""
 if ($env:CI -ne "true") {

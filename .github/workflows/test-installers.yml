@@ -135,7 +135,8 @@ jobs:
           
           Write-Host "Testing RStudio version check..."
           $RStudioPage = Invoke-WebRequest -Uri "https://posit.co/download/rstudio-desktop/" -UseBasicParsing
-          if ($RStudioPage.Content -match "//download1\.rstudio\.org/electron/windows/RStudio-([^`"]+)\.exe") {
+          $pattern = "//download1\.rstudio\.org/electron/windows/RStudio-([^""]+)\.exe"
+          if ($RStudioPage.Content -match $pattern) {
               $RStudioURL = "https:$($matches[0])"
               $Version = $matches[1] -replace '-', '+'
               Write-Host "✅ Latest RStudio version detected: $Version"

@@ -186,7 +186,8 @@ if (Test-Path $RStudioPath) {
 # Get latest RStudio version from Posit
 Write-Host "   Checking latest RStudio version from Posit..." -ForegroundColor Gray
 $RStudioPage = Invoke-WebRequest -Uri "https://posit.co/download/rstudio-desktop/" -UseBasicParsing
-if ($RStudioPage.Content -match "//download1\.rstudio\.org/electron/windows/RStudio-([^`"]+)\.exe") {
+$pattern = "//download1\.rstudio\.org/electron/windows/RStudio-([^""]+)\.exe"
+if ($RStudioPage.Content -match $pattern) {
     $RStudioURL = "https:$($matches[0])"
     $LatestRStudioVersion = $matches[1] -replace '-', '+'
     Write-Host "   Latest RStudio version: $LatestRStudioVersion" -ForegroundColor Gray

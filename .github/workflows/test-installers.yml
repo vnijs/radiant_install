@@ -90,9 +90,9 @@ jobs:
           # Check PowerShell version
           Write-Host "✅ PowerShell version: $($PSVersionTable.PSVersion)"
 
-  test-macos:
+  test-macos-dry-run:
     runs-on: macos-latest
-    name: Test macOS Installer
+    name: Test macOS Installer (Dry Run)
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -103,7 +103,7 @@ jobs:
           bash -n macos-install-radiant.sh
           echo "✅ Script syntax is valid"
 
-      - name: Test script in dry-run mode
+      - name: Test script logic in dry-run mode
         run: |
           echo "Creating test version of script..."
           echo "TEST MODE - Checking script logic without installing"
@@ -181,6 +181,59 @@ jobs:
               echo "❌ sw_vers is not available"
               exit 1
           fi
+
+  test-macos-full-install:
+    runs-on: macos-latest
+    name: Test macOS Full Installation
+    # Only run full install on manual trigger or main branch
+    if: github.event_name == 'workflow_dispatch' || (github.event_name == 'push' && github.ref == 'refs/heads/main')
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Run full macOS installation
+        run: |
+          echo "🚀 Running FULL macOS installation test..."
+          echo "This will actually install R, RStudio, and packages"
+          echo ""
+          
+          # Run the actual installation script
+          chmod +x macos-install-radiant.sh
+          ./macos-install-radiant.sh
+          
+      - name: Verify installations
+        run: |
+          echo "Verifying installations..."
+          
+          # Check R installation
+          if command -v R &> /dev/null; then
+              R_VERSION=$(R --version | head -n1)
+              echo "✅ R installed: $R_VERSION"
+          else
+              echo "❌ R not found"
+              exit 1
+          fi
+          
+          # Check RStudio installation
+          if [ -d "/Applications/RStudio.app" ]; then
+              echo "✅ RStudio installed in /Applications"
+          else
+              echo "❌ RStudio not found in /Applications"
+              exit 1
+          fi
+          
+          # Check if key R packages are installed
+          R -e "if ('radiant' %in% rownames(installed.packages())) cat('✅ Radiant package installed\n') else stop('❌ Radiant package not found')"
+          
+          # Check if pdflatex is available (from TinyTeX)
+          if command -v pdflatex &> /dev/null; then
+              echo "✅ LaTeX (pdflatex) is available"
+          else
+              echo "⚠️  LaTeX (pdflatex) not found (TinyTeX might not be installed)"
+          fi
+          
+          echo ""
+          echo "🎉 Full installation test completed successfully!"
 
   test-download-commands:
     runs-on: ubuntu-latest

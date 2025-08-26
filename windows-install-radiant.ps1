@@ -16,7 +16,7 @@ Write-Host ""
 $ErrorActionPreference = "Stop"
 
 # Create temp directory
-$TEMP_DIR = New-TemporaryFile | %{ rm $_; mkdir $_ }
+$TEMP_DIR = New-TemporaryFile | ForEach-Object { Remove-Item $_; New-Item -ItemType Directory -Path $_ }
 Set-Location $TEMP_DIR
 Write-Host "📁 Working in temporary directory: $TEMP_DIR" -ForegroundColor Gray
 Write-Host ""
@@ -133,16 +133,16 @@ if ($CurrentRVersion -eq $LatestRVersion -and -not $RInProgramFiles) {
         Write-Host "   Please uninstall R from Program Files first, then re-run this script" -ForegroundColor Red
         Write-Host "" 
         Write-Host "   To uninstall R:" -ForegroundColor Yellow
-        Write-Host "   1. Open Control Panel → Programs → Uninstall a program" -ForegroundColor Gray
+        Write-Host "   1. Open Control Panel -> Programs -> Uninstall a program" -ForegroundColor Gray
         Write-Host "   2. Find R for Windows and uninstall it" -ForegroundColor Gray
-        Write-Host "   3. Delete the folder: $env:USERPROFILE\Documents\R (if it exists)" -ForegroundColor Gray
+        Write-Host "   3. Delete the folder: $($env:USERPROFILE)\Documents\R (if it exists)" -ForegroundColor Gray
         Write-Host "   4. Re-run this installer script" -ForegroundColor Gray
         Read-Host "Press Enter to exit"
         exit 1
     }
     
     if ($CurrentRVersion) {
-        Write-Host "   R update available: $CurrentRVersion → $LatestRVersion" -ForegroundColor Yellow
+        Write-Host "   R update available: $CurrentRVersion -> $LatestRVersion" -ForegroundColor Yellow
     }
     
     Write-Host "   Downloading R installer from CRAN..." -ForegroundColor Gray
@@ -196,7 +196,7 @@ if ($CurrentRStudioVersion -eq $LatestRStudioVersion) {
     Write-Host "✅ RStudio is already up to date (version $CurrentRStudioVersion)" -ForegroundColor Green
 } else {
     if ($CurrentRStudioVersion) {
-        Write-Host "   RStudio update available: $CurrentRStudioVersion → $LatestRStudioVersion" -ForegroundColor Yellow
+        Write-Host "   RStudio update available: $CurrentRStudioVersion -> $LatestRStudioVersion" -ForegroundColor Yellow
     }
     
     Write-Host "   Downloading RStudio from Posit..." -ForegroundColor Gray
@@ -215,7 +215,7 @@ Write-Host "🔧 Step 3: Checking 7-Zip installation..." -ForegroundColor Yellow
 $7ZipInstalled = $false
 $7ZipPaths = @(
     "${env:ProgramFiles}\7-Zip\7z.exe",
-    "${env:ProgramFiles(x86)}\7-Zip\7z.exe"
+    "${env:"ProgramFiles(x86)"}\7-Zip\7z.exe"
 )
 
 foreach ($path in $7ZipPaths) {
@@ -240,7 +240,7 @@ if (-not $7ZipInstalled) {
     if (Test-Path "${env:ProgramFiles}\7-Zip") {
         $7ZipPath = "${env:ProgramFiles}\7-Zip"
     } else {
-        $7ZipPath = "${env:ProgramFiles(x86)}\7-Zip"
+        $7ZipPath = "${env:"ProgramFiles(x86)"}\7-Zip"
     }
     
     $CurrentPath = [Environment]::GetEnvironmentVariable("Path", "Machine")

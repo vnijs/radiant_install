@@ -8,6 +8,86 @@ on:
   workflow_dispatch:
 
 jobs:
+  test-windows-full-install:
+    runs-on: windows-latest
+    name: Test Windows Full Installation
+    # Only run full install on manual trigger or main branch
+    if: github.event_name == 'workflow_dispatch' || (github.event_name == 'push' && github.ref == 'refs/heads/main')
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Run full Windows installation
+        shell: powershell
+        run: |
+          Write-Host "Running FULL Windows installation test..." -ForegroundColor Cyan
+          Write-Host "This will actually install R, RStudio, and packages" -ForegroundColor Gray
+          Write-Host ""
+          
+          # Set execution policy for this session
+          Set-ExecutionPolicy -ExecutionPolicy Bypass -Scope Process -Force
+          
+          # Run the actual installation script
+          # Note: In CI, we'll auto-answer "N" to the R experience question if R is in Program Files
+          $env:CI = "true"
+          .\windows-install-radiant.ps1
+          
+      - name: Verify installations
+        shell: powershell  
+        run: |
+          Write-Host "Verifying installations..." -ForegroundColor Cyan
+          
+          # Check R installation
+          $RPath = Get-ChildItem "C:\R\R-*\bin\R.exe" -ErrorAction SilentlyContinue | Select-Object -First 1
+          if ($RPath) {
+              Write-Host "R installed at: $($RPath.FullName)" -ForegroundColor Green
+              $RVersion = & $RPath.FullName --version 2>&1 | Select-Object -First 1
+              Write-Host "   Version: $RVersion" -ForegroundColor Gray
+          } else {
+              Write-Host "R not found in C:\R" -ForegroundColor Red
+              # Check if mistakenly in Program Files
+              if (Test-Path "${env:ProgramFiles}\R\R-*\bin\R.exe") {
+                  Write-Host "R found in Program Files (not recommended)" -ForegroundColor Yellow
+              }
+              exit 1
+          }
+          
+          # Check RStudio installation
+          if (Test-Path "${env:ProgramFiles}\RStudio\rstudio.exe") {
+              Write-Host "RStudio installed in Program Files\RStudio" -ForegroundColor Green
+          } else {
+              Write-Host "RStudio not found" -ForegroundColor Red
+              exit 1
+          }
+          
+          # Check 7-Zip installation
+          $7ZipPath = Get-ChildItem -Path @(
+              "${env:ProgramFiles}\7-Zip\7z.exe",
+              "C:\Program Files (x86)\7-Zip\7z.exe"
+          ) -ErrorAction SilentlyContinue | Select-Object -First 1
+          
+          if ($7ZipPath) {
+              Write-Host "7-Zip installed at: $7ZipPath" -ForegroundColor Green
+          } else {
+              Write-Host "7-Zip not found" -ForegroundColor Yellow
+          }
+          
+          # Check if key R packages are installed
+          if ($RPath) {
+              & $RPath.FullName -e "if ('radiant' %in% rownames(installed.packages())) cat('Radiant package installed\n') else stop('Radiant package not found')"
+          }
+          
+          # Check if pdflatex is available (from TinyTeX)
+          $pdflatex = Get-Command pdflatex -ErrorAction SilentlyContinue
+          if ($pdflatex) {
+              Write-Host "LaTeX (pdflatex) is available at: $($pdflatex.Path)" -ForegroundColor Green
+          } else {
+              Write-Host "LaTeX (pdflatex) not found (TinyTeX might not be installed)" -ForegroundColor Yellow
+          }
+          
+          Write-Host ""
+          Write-Host "Full installation test completed successfully!" -ForegroundColor Green
+
   test-windows:
     runs-on: windows-latest
     name: Test Windows Installer
@@ -241,86 +321,6 @@ jobs:
           
           echo ""
           echo "🎉 Full installation test completed successfully!"
-
-  test-windows-full-install:
-    runs-on: windows-latest
-    name: Test Windows Full Installation
-    # Only run full install on manual trigger or main branch
-    if: github.event_name == 'workflow_dispatch' || (github.event_name == 'push' && github.ref == 'refs/heads/main')
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-
-      - name: Run full Windows installation
-        shell: powershell
-        run: |
-          Write-Host "🚀 Running FULL Windows installation test..." -ForegroundColor Cyan
-          Write-Host "This will actually install R, RStudio, and packages" -ForegroundColor Gray
-          Write-Host ""
-          
-          # Set execution policy for this session
-          Set-ExecutionPolicy -ExecutionPolicy Bypass -Scope Process -Force
-          
-          # Run the actual installation script
-          # Note: In CI, we'll auto-answer "N" to the R experience question if R is in Program Files
-          $env:CI = "true"
-          .\windows-install-radiant.ps1
-          
-      - name: Verify installations
-        shell: powershell  
-        run: |
-          Write-Host "Verifying installations..." -ForegroundColor Cyan
-          
-          # Check R installation
-          $RPath = Get-ChildItem "C:\R\R-*\bin\R.exe" -ErrorAction SilentlyContinue | Select-Object -First 1
-          if ($RPath) {
-              Write-Host "✅ R installed at: $($RPath.FullName)" -ForegroundColor Green
-              $RVersion = & $RPath.FullName --version 2>&1 | Select-Object -First 1
-              Write-Host "   Version: $RVersion" -ForegroundColor Gray
-          } else {
-              Write-Host "❌ R not found in C:\R" -ForegroundColor Red
-              # Check if mistakenly in Program Files
-              if (Test-Path "${env:ProgramFiles}\R\R-*\bin\R.exe") {
-                  Write-Host "⚠️  R found in Program Files (not recommended)" -ForegroundColor Yellow
-              }
-              exit 1
-          }
-          
-          # Check RStudio installation
-          if (Test-Path "${env:ProgramFiles}\RStudio\rstudio.exe") {
-              Write-Host "✅ RStudio installed in Program Files\RStudio" -ForegroundColor Green
-          } else {
-              Write-Host "❌ RStudio not found" -ForegroundColor Red
-              exit 1
-          }
-          
-          # Check 7-Zip installation
-          $7ZipPath = @(
-              "${env:ProgramFiles}\7-Zip\7z.exe",
-              "${env:ProgramFiles(x86)}\7-Zip\7z.exe"
-          ) | Where-Object { Test-Path $_ } | Select-Object -First 1
-          
-          if ($7ZipPath) {
-              Write-Host "✅ 7-Zip installed at: $7ZipPath" -ForegroundColor Green
-          } else {
-              Write-Host "⚠️  7-Zip not found" -ForegroundColor Yellow
-          }
-          
-          # Check if key R packages are installed
-          if ($RPath) {
-              & $RPath.FullName -e "if ('radiant' %in% rownames(installed.packages())) cat('✅ Radiant package installed\n') else stop('❌ Radiant package not found')"
-          }
-          
-          # Check if pdflatex is available (from TinyTeX)
-          $pdflatex = Get-Command pdflatex -ErrorAction SilentlyContinue
-          if ($pdflatex) {
-              Write-Host "✅ LaTeX (pdflatex) is available at: $($pdflatex.Path)" -ForegroundColor Green
-          } else {
-              Write-Host "⚠️  LaTeX (pdflatex) not found (TinyTeX might not be installed)" -ForegroundColor Yellow
-          }
-          
-          Write-Host ""
-          Write-Host "🎉 Full installation test completed successfully!" -ForegroundColor Green
 
   test-download-commands:
     runs-on: ubuntu-latest

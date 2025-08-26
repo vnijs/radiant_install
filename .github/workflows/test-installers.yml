@@ -2,9 +2,9 @@ name: Test Installation Scripts
 
 on:
   push:
-    branches: [ gh-pages ]
+    branches: [ main ]
   pull_request:
-    branches: [ gh-pages ]
+    branches: [ main ]
   workflow_dispatch:
 
 jobs:
@@ -214,14 +214,14 @@ EOF
         run: |
           echo "Testing Windows download command (syntax only on Linux)..."
           # Just verify the command structure is valid
-          echo 'irm https://raw.githubusercontent.com/radiant-rstats/minicran/gh-pages/windows-install-radiant.ps1 | iex'
+          echo 'irm https://raw.githubusercontent.com/vnijs/radiant_install/main/windows-install-radiant.ps1 | iex'
           echo "✅ Windows command syntax appears valid"
 
       - name: Test macOS download command
         run: |
           echo "Testing macOS download command..."
           # Test that the URL is reachable
-          if curl -fsSL --head https://raw.githubusercontent.com/radiant-rstats/minicran/gh-pages/macos-install-radiant.sh > /dev/null 2>&1; then
+          if curl -fsSL --head https://raw.githubusercontent.com/vnijs/radiant_install/main/macos-install-radiant.sh > /dev/null 2>&1; then
               echo "✅ macOS installer URL is reachable"
           else
               echo "⚠️  macOS installer URL not reachable (might not be deployed yet)"

@@ -258,7 +258,7 @@ Write-Host "   This may take several minutes..." -ForegroundColor Gray
 
 # Download R script for package installation
 Write-Host "   Downloading package installation script..." -ForegroundColor Gray
-Invoke-WebRequest -Uri "https://raw.githubusercontent.com/vnijs/radiant_install/gh-pages/install_packages.R" -OutFile "install_packages.R"
+Invoke-WebRequest -Uri "https://raw.githubusercontent.com/vnijs/radiant_install/main/install_packages.R" -OutFile "install_packages.R"
 Check-Success "Download package script"
 
 # Find R executable
@@ -278,7 +278,7 @@ Write-Host "   This enables PDF generation in Radiant reports..." -ForegroundCol
 
 # Download R script for TinyTeX installation
 Write-Host "   Downloading TinyTeX installation script..." -ForegroundColor Gray
-Invoke-WebRequest -Uri "https://raw.githubusercontent.com/vnijs/radiant_install/gh-pages/install_tinytex.R" -OutFile "install_tinytex.R"
+Invoke-WebRequest -Uri "https://raw.githubusercontent.com/vnijs/radiant_install/main/install_tinytex.R" -OutFile "install_tinytex.R"
 Check-Success "Download TinyTeX script"
 
 & $RExePath.FullName --slave --no-restore --file=install_tinytex.R

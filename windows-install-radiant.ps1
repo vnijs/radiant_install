@@ -135,7 +135,7 @@ if ($CurrentRVersion -eq $LatestRVersion -and -not $RInProgramFiles) {
         Write-Host "   To uninstall R:" -ForegroundColor Yellow
         Write-Host "   1. Open Control Panel -> Programs -> Uninstall a program" -ForegroundColor Gray
         Write-Host "   2. Find R for Windows and uninstall it" -ForegroundColor Gray
-        Write-Host "   3. Delete the folder: $($env:USERPROFILE)\Documents\R (if it exists)" -ForegroundColor Gray
+        Write-Host "   3. Delete the folder: $env:USERPROFILE\Documents\R (if it exists)" -ForegroundColor Gray
         Write-Host "   4. Re-run this installer script" -ForegroundColor Gray
         Read-Host "Press Enter to exit"
         exit 1

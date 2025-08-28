@@ -2,10 +2,24 @@
 # Use the following command to run the latest version of this script:
 # iwr -useb https://raw.githubusercontent.com/vnijs/radiant_install/main/windows-install-radiant.ps1 | iex
 
-# Require Administrator privileges
+# Handle running from iwr | iex (no $PSCommandPath available)
+if (-not $PSCommandPath) {
+    # Save script to temp file for proper execution with admin privileges
+    $TempScript = "$env:TEMP\radiant-install-$(Get-Random).ps1"
+    $MyInvocation.MyCommand.ScriptBlock | Out-File -FilePath $TempScript -Encoding UTF8
+    
+    if (-NOT ([Security.Principal.WindowsPrincipal] [Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole] "Administrator")) {
+        Write-Host "This script requires Administrator privileges. Opening Administrator PowerShell..." -ForegroundColor Yellow
+        Write-Host "The installation will continue in the new window..." -ForegroundColor Gray
+        # Use -NoExit to keep window open after script completes or errors
+        Start-Process powershell.exe "-NoExit -NoProfile -ExecutionPolicy Bypass -File `"$TempScript`"" -Verb RunAs
+        exit
+    }
+}
+
+# Require Administrator privileges (for direct file execution)
 if (-NOT ([Security.Principal.WindowsPrincipal] [Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole] "Administrator")) {
     Write-Host "This script requires Administrator privileges. Restarting as Administrator..." -ForegroundColor Yellow
-    # Add -NoExit to keep the admin window open
     Start-Process powershell.exe "-NoExit -NoProfile -ExecutionPolicy Bypass -File `"$PSCommandPath`"" -Verb RunAs
     exit
 }

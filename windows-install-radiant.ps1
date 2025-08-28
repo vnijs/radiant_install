@@ -1,4 +1,6 @@
-# Rady @ UCSD - Automated installer for R, RStudio, and Radiant packages on Windows
+# Radiant Installation Script for Windows
+# Use the following command to run the latest version of this script:
+# iwr -useb https://raw.githubusercontent.com/vnijs/radiant_install/main/windows-install-radiant.ps1 | iex
 
 # Require Administrator privileges
 if (-NOT ([Security.Principal.WindowsPrincipal] [Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole] "Administrator")) {
@@ -8,7 +10,8 @@ if (-NOT ([Security.Principal.WindowsPrincipal] [Security.Principal.WindowsIdent
     exit
 }
 
-Write-Host "Rady @ UCSD Radiant Installer for Windows" -ForegroundColor Cyan
+Write-Host "Rady School of Management @ UCSD" -ForegroundColor Cyan
+Write-Host "Radiant-for-R Installer for Windows" -ForegroundColor Cyan
 Write-Host "==========================================" -ForegroundColor Cyan
 Write-Host ""
 
@@ -322,6 +325,16 @@ Write-Host ""
 # Final instructions
 Write-Host "Installation Complete!" -ForegroundColor Green
 Write-Host "========================" -ForegroundColor Green
+Write-Host ""
+Write-Host "[OK] R installed" -ForegroundColor Green
+Write-Host "[OK] RStudio installed" -ForegroundColor Green
+Write-Host "[OK] Radiant packages installed" -ForegroundColor Green
+Write-Host "[OK] TinyTeX installed for PDF reports" -ForegroundColor Green
+Write-Host ""
+Write-Host "Next Steps:" -ForegroundColor Yellow
+Write-Host "   1. Open RStudio from Start Menu or Desktop shortcut" -ForegroundColor Gray
+Write-Host "   2. In RStudio, go to: Addins -> Start radiant or type 'radiant::radiant()' in the console window in Rstudio" -ForegroundColor Gray
+Write-Host "   3. Radiant will open in your web browser" -ForegroundColor Gray
 Write-Host ""
 
 # Pause at the end so user can see results

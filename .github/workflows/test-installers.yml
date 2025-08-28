@@ -41,7 +41,10 @@ jobs:
           $RPath = Get-ChildItem "C:\R\R-*\bin\R.exe" -ErrorAction SilentlyContinue | Select-Object -First 1
           if ($RPath) {
               Write-Host "R installed at: $($RPath.FullName)" -ForegroundColor Green
-              $RVersion = & $RPath.FullName --version 2>&1 | Select-Object -First 1
+              # Use cmd to avoid PowerShell treating stderr as error
+              $RVersionOutput = cmd /c "`"$($RPath.FullName)`" --version 2>&1"
+              # Join array output to string and get first line
+              $RVersion = ($RVersionOutput -join "`n").Split("`n")[0]
               Write-Host "   Version: $RVersion" -ForegroundColor Gray
           } else {
               Write-Host "R not found in C:\R" -ForegroundColor Red

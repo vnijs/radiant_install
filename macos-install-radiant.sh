@@ -1,11 +1,13 @@
 #!/bin/bash
 
 # Radiant Installation Script for macOS
-# Rady @ UCSD - Automated installer for R, RStudio, and Radiant packages on macOS
+# Use the following command to run the latest version of this script:
+# curl -sSL https://raw.githubusercontent.com/vnijs/radiant_install/main/macos-install-radiant.sh | bash
 
 set -e  # Exit on any error
 
-echo "Rady @ UCSD Radiant Installer for macOS"
+echo "Rady School of Managment @ UCSD"
+echo "Radiant-for-R Installer for macOS"
 echo "======================================="
 echo ""
 
@@ -129,35 +131,10 @@ echo ""
 echo "🔧 Step 3: Installing Radiant and R packages..."
 echo "   This may take several minutes..."
 
-# Create R script for package installation
-cat > install_packages.R << 'EOF'
-# Set options
-options(HTTPUserAgent = sprintf("R/%s R (%s)", getRversion(), paste(getRversion(), R.version$platform, R.version$arch, R.version$os)))
-repos <- c(CRAN = "https://cloud.r-project.org")
-options(repos = repos)
-
-# Install required packages
-cat("📦 Installing Radiant and dependencies ...\n")
-ipkgs <- rownames(installed.packages())
-install <- function(x) {
-  pkgs <- x[!x %in% ipkgs]
-  if (length(pkgs) > 0) {
-    cat(paste("   Installing:", paste(pkgs, collapse = ", "), "\n"))
-    install.packages(pkgs, lib = .libPaths()[1], type = "binary", quiet = TRUE)
-  }
-}
-
-# Install core packages
-install(c("radiant", "miniUI", "webshot", "usethis", "remotes", "tinytex"))
-
-# Install PhantomJS for webshot
-cat("📦 Installing PhantomJS for screenshots...\n")
-if (is.null(webshot:::find_phantom())) {
-  webshot::install_phantomjs()
-}
-
-cat("✅ R packages installation complete\n")
-EOF
+# Download R script for package installation
+echo "   Downloading package installation script..."
+curl -L -o "install_packages.R" "https://raw.githubusercontent.com/vnijs/radiant_install/main/install_packages.R"
+check_success "Download package script"
 
 # Run R script
 /usr/local/bin/R --slave --no-restore --file=install_packages.R
@@ -168,16 +145,10 @@ echo ""
 echo "🔧 Step 4: Installing TinyTeX for PDF reports..."
 echo "   This enables PDF generation in Radiant reports..."
 
-cat > install_tinytex.R << 'EOF'
-# Check if pdflatex already exists
-if (length(Sys.which("pdflatex")) == 0) {
-  cat("📦 Installing TinyTeX...\n")
-  tinytex::install_tinytex()
-  cat("✅ TinyTeX installation complete\n")
-} else {
-  cat("✅ LaTeX already installed, skipping TinyTeX\n")
-}
-EOF
+# Download R script for TinyTeX installation
+echo "   Downloading TinyTeX installation script..."
+curl -L -o "install_tinytex.R" "https://raw.githubusercontent.com/vnijs/radiant_install/main/install_tinytex.R"
+check_success "Download TinyTeX script"
 
 /usr/local/bin/R --slave --no-restore --file=install_tinytex.R
 check_success "TinyTeX installation"
@@ -193,13 +164,13 @@ echo ""
 echo "🎉 Installation Complete!"
 echo "======================="
 echo ""
-echo "✅ R installed and ready"
-echo "✅ RStudio installed in Applications folder"
+echo "✅ R installed"
+echo "✅ RStudio installed"
 echo "✅ Radiant packages installed"
 echo "✅ TinyTeX installed for PDF reports"
 echo ""
 echo "📋 Next Steps:"
 echo "   1. Open RStudio from Applications folder"
-echo "   2. In RStudio, go to: Addins → Start radiant or type 'radiant::radiant()' in the R-console"
+echo "   2. In RStudio, go to: Addins → Start radiant or type 'radiant::radiant()' in the console window in Rstudio"
 echo "   3. Radiant will open in your web browser"
 echo ""

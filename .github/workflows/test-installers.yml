@@ -90,6 +90,81 @@ jobs:
           
           Write-Host ""
           Write-Host "Full installation test completed successfully!" -ForegroundColor Green
+      
+      - name: Test uninstall script
+        shell: powershell
+        run: |
+          Write-Host "Testing uninstall script..." -ForegroundColor Cyan
+          
+          # Run uninstall script with automatic 'yes' confirmation
+          $env:CI = "true"
+          # Modify the uninstall script to auto-confirm in CI
+          $content = Get-Content .\windows-uninstall-radiant.ps1 -Raw
+          $content = $content -replace "Read-Host `"Are you sure you want to uninstall\? Type 'yes' to confirm`"", "`"yes`""
+          $content = $content -replace "Read-Host `"Do you want to remove 7-Zip as well\? \(yes/no\)`"", "`"yes`""
+          $content = $content -replace "Read-Host$", "# Read-Host"
+          $content | Out-File -FilePath .\windows-uninstall-radiant-ci.ps1 -Encoding UTF8
+          
+          # Run the modified uninstall script
+          .\windows-uninstall-radiant-ci.ps1
+          
+      - name: Verify uninstallation
+        shell: powershell
+        run: |
+          Write-Host "Verifying complete uninstallation..." -ForegroundColor Cyan
+          
+          $errorsFound = $false
+          
+          # Check R is removed
+          $RPath = Get-ChildItem "C:\R\R-*\bin\R.exe" -ErrorAction SilentlyContinue | Select-Object -First 1
+          if ($RPath) {
+              Write-Host "[ERROR] R still found at: $($RPath.FullName)" -ForegroundColor Red
+              $errorsFound = $true
+          } else {
+              Write-Host "[OK] R successfully removed" -ForegroundColor Green
+          }
+          
+          # Check RStudio is removed
+          $RStudioPaths = @(
+              "${env:ProgramFiles}\RStudio\rstudio.exe",
+              "${env:LocalAppData}\Programs\RStudio\rstudio.exe"
+          )
+          foreach ($path in $RStudioPaths) {
+              if (Test-Path $path) {
+                  Write-Host "[ERROR] RStudio still found at: $path" -ForegroundColor Red
+                  $errorsFound = $true
+              }
+          }
+          if (-not $errorsFound) {
+              Write-Host "[OK] RStudio successfully removed" -ForegroundColor Green
+          }
+          
+          # Check R libraries are removed
+          if (Test-Path "$env:USERPROFILE\Documents\R") {
+              Write-Host "[WARNING] R libraries folder still exists" -ForegroundColor Yellow
+          } else {
+              Write-Host "[OK] R libraries removed" -ForegroundColor Green
+          }
+          
+          # Check 7-Zip is removed (we said yes to remove it)
+          $7ZipPath = Get-ChildItem -Path @(
+              "${env:ProgramFiles}\7-Zip\7z.exe",
+              "${env:ProgramFiles(x86)}\7-Zip\7z.exe"
+          ) -ErrorAction SilentlyContinue | Select-Object -First 1
+          if ($7ZipPath) {
+              Write-Host "[WARNING] 7-Zip still found at: $7ZipPath" -ForegroundColor Yellow
+          } else {
+              Write-Host "[OK] 7-Zip removed" -ForegroundColor Green
+          }
+          
+          if ($errorsFound) {
+              Write-Host ""
+              Write-Host "Uninstallation verification FAILED" -ForegroundColor Red
+              exit 1
+          } else {
+              Write-Host ""
+              Write-Host "Uninstallation verification PASSED - all components removed!" -ForegroundColor Green
+          }
 
   test-windows:
     runs-on: windows-latest
@@ -234,6 +309,74 @@ jobs:
           
           echo ""
           echo "✅ Full macOS installation test completed successfully!"
+      
+      - name: Test uninstall script
+        run: |
+          echo "Testing uninstall script..."
+          
+          # Make uninstall script executable
+          chmod +x macos-uninstall-radiant.sh
+          
+          # Modify the uninstall script to auto-confirm in CI
+          sed 's/read -p "Are you sure you want to uninstall? (yes\/no): " -r REPLY/REPLY="yes"/' macos-uninstall-radiant.sh > macos-uninstall-radiant-ci.sh
+          chmod +x macos-uninstall-radiant-ci.sh
+          
+          # Run the modified uninstall script
+          export CI=true
+          sudo ./macos-uninstall-radiant-ci.sh
+          
+      - name: Verify uninstallation
+        run: |
+          echo "Verifying complete uninstallation..."
+          
+          errors_found=false
+          
+          # Check R is removed
+          if command -v R &> /dev/null; then
+              echo "❌ ERROR: R command still available"
+              errors_found=true
+          else
+              echo "✅ R successfully removed"
+          fi
+          
+          # Check R framework is removed
+          if [ -d "/Library/Frameworks/R.framework" ]; then
+              echo "❌ ERROR: R framework still exists"
+              errors_found=true
+          else
+              echo "✅ R framework removed"
+          fi
+          
+          # Check RStudio is removed
+          if [ -d "/Applications/RStudio.app" ]; then
+              echo "❌ ERROR: RStudio still found in /Applications"
+              errors_found=true
+          else
+              echo "✅ RStudio successfully removed"
+          fi
+          
+          # Check R libraries are removed
+          if [ -d "$HOME/Library/R" ]; then
+              echo "⚠️  WARNING: R libraries folder still exists"
+          else
+              echo "✅ R libraries removed"
+          fi
+          
+          # Check TinyTeX is removed
+          if [ -d "$HOME/Library/TinyTeX" ]; then
+              echo "⚠️  WARNING: TinyTeX folder still exists"
+          else
+              echo "✅ TinyTeX removed"
+          fi
+          
+          if [ "$errors_found" = true ]; then
+              echo ""
+              echo "❌ Uninstallation verification FAILED"
+              exit 1
+          else
+              echo ""
+              echo "✅ Uninstallation verification PASSED - all components removed!"
+          fi
 
   test-macos:
     runs-on: macos-latest

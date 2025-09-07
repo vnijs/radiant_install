@@ -76,11 +76,14 @@ function Download-File {
     }
 
     Write-Host "   Downloading $Description$fileSize..." -ForegroundColor Gray
+    
+    # Get full path for output file
+    $FullPath = Join-Path (Get-Location) $OutFile
 
     # Try using .NET WebClient first (faster)
     try {
         $webClient = New-Object System.Net.WebClient
-        $webClient.DownloadFile($Url, $OutFile)
+        $webClient.DownloadFile($Url, $FullPath)
         Write-Host "   Download complete" -ForegroundColor Gray
         return $true
     } catch {
@@ -89,7 +92,7 @@ function Download-File {
 
     # Fallback to Invoke-WebRequest
     try {
-        Invoke-WebRequest -Uri $Url -OutFile $OutFile -UseBasicParsing
+        Invoke-WebRequest -Uri $Url -OutFile $FullPath -UseBasicParsing
         Write-Host "   Download complete" -ForegroundColor Gray
         return $true
     } catch {

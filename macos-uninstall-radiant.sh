@@ -2,6 +2,12 @@
 
 # Radiant Uninstall Script for macOS
 # This script removes R, RStudio, and all associated files
+# 
+# To run this script via curl (requires confirmation):
+# curl -sSL https://raw.githubusercontent.com/vnijs/radiant_install/main/macos-uninstall-radiant.sh | CONFIRM_UNINSTALL=yes bash
+#
+# Or download and run locally:
+# ./macos-uninstall-radiant.sh
 
 echo "Rady School of Management @ UCSD"
 echo "Radiant-for-R Uninstaller for macOS"
@@ -10,8 +16,13 @@ echo ""
 echo "⚠️  WARNING: This will completely remove R, RStudio, and all R packages"
 echo ""
 
-# Ask for confirmation (skip in CI mode)
-if [ "$CI" != "true" ]; then
+# Check for confirmation
+if [ "$CI" = "true" ]; then
+    echo "CI Mode: Auto-confirming uninstall"
+elif [ "$CONFIRM_UNINSTALL" = "yes" ]; then
+    echo "✅ Uninstall confirmed via CONFIRM_UNINSTALL=yes"
+elif [ -t 0 ]; then
+    # Running interactively (terminal is attached to stdin)
     read -p "Are you sure you want to uninstall? (yes/no): " -r REPLY
     echo
     if [[ ! $REPLY =~ ^[Yy]es$ ]]; then
@@ -19,7 +30,20 @@ if [ "$CI" != "true" ]; then
         exit 0
     fi
 else
-    echo "CI Mode: Auto-confirming uninstall"
+    # Running from pipe without confirmation
+    echo "❌ Safety check: Uninstall confirmation required"
+    echo ""
+    echo "To uninstall Radiant via curl, you must confirm by running:"
+    echo ""
+    echo "  curl -sSL https://raw.githubusercontent.com/vnijs/radiant_install/main/macos-uninstall-radiant.sh | CONFIRM_UNINSTALL=yes bash"
+    echo ""
+    echo "Or download and run the script locally:"
+    echo ""
+    echo "  curl -sSL https://raw.githubusercontent.com/vnijs/radiant_install/main/macos-uninstall-radiant.sh -o uninstall.sh"
+    echo "  chmod +x uninstall.sh"
+    echo "  ./uninstall.sh"
+    echo ""
+    exit 1
 fi
 
 echo "🔧 Starting uninstallation process..."

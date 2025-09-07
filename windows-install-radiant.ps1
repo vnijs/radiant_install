@@ -241,7 +241,8 @@ if ($CurrentRVersion -eq $LatestRVersion -and -not $RInProgramFiles) {
 
     Write-Host "   Installing R to $SystemDrive\R..." -ForegroundColor Gray
     # Silent install with custom directory
-    Start-Process -FilePath "R-installer.exe" -ArgumentList "/VERYSILENT /DIR=`"$SystemDrive\R\R-$LatestRVersion`"" -Wait
+    $RInstallerPath = Join-Path (Get-Location) "R-installer.exe"
+    Start-Process -FilePath $RInstallerPath -ArgumentList "/VERYSILENT /DIR=`"$SystemDrive\R\R-$LatestRVersion`"" -Wait
     Check-Success "R installation"
 
     # Add R to PATH if not already there
@@ -260,8 +261,23 @@ Write-Host "Step 2: Checking RStudio installation..." -ForegroundColor Yellow
 
 # Get current RStudio version if installed
 $CurrentRStudioVersion = $null
-$RStudioExePath = "${env:ProgramFiles}\RStudio\rstudio.exe"
-if (Test-Path $RStudioExePath) {
+# Check multiple possible RStudio locations
+$RStudioPaths = @(
+    "${env:ProgramFiles}\RStudio\rstudio.exe",
+    "${env:ProgramFiles}\RStudio\bin\rstudio.exe",
+    "${env:LocalAppData}\Programs\RStudio\rstudio.exe",
+    "${env:LocalAppData}\Programs\RStudio\bin\rstudio.exe"
+)
+
+$RStudioExePath = $null
+foreach ($path in $RStudioPaths) {
+    if (Test-Path $path) {
+        $RStudioExePath = $path
+        break
+    }
+}
+
+if ($RStudioExePath) {
     $VersionInfo = (Get-Item $RStudioExePath).VersionInfo
     if ($VersionInfo.ProductVersion) {
         $CurrentRStudioVersion = $VersionInfo.ProductVersion
@@ -304,7 +320,8 @@ if ($CurrentRStudioVersion -and $LatestRStudioVersion -and ($CurrentRStudioVersi
     Check-Success "RStudio download"
 
     Write-Host "   Installing RStudio..." -ForegroundColor Gray
-    Start-Process -FilePath "RStudio-installer.exe" -ArgumentList "/S" -Wait
+    $RStudioInstallerPath = Join-Path (Get-Location) "RStudio-installer.exe"
+    Start-Process -FilePath $RStudioInstallerPath -ArgumentList "/S" -Wait
     Check-Success "RStudio installation"
 }
 Write-Host ""
@@ -334,7 +351,8 @@ if (-not $7ZipInstalled) {
     Check-Success "7-Zip download"
 
     Write-Host "   Installing 7-Zip..." -ForegroundColor Gray
-    Start-Process -FilePath "7zip-installer.exe" -ArgumentList "/S" -Wait
+    $7ZipInstallerPath = Join-Path (Get-Location) "7zip-installer.exe"
+    Start-Process -FilePath $7ZipInstallerPath -ArgumentList "/S" -Wait
     Check-Success "7-Zip installation"
 
     # Add 7-Zip to PATH

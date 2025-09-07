@@ -13,10 +13,15 @@ if (-NOT ([Security.Principal.WindowsPrincipal] [Security.Principal.WindowsIdent
 Write-Host "Rady School of Management @ UCSD" -ForegroundColor Cyan
 Write-Host "Radiant-for-R Installer for Windows" -ForegroundColor Cyan
 Write-Host "==========================================" -ForegroundColor Cyan
+# Write-Host ""
+# Write-Host "Note: Downloads optimized for faster installation" -ForegroundColor Gray
 Write-Host ""
 
 # Set error action preference
 $ErrorActionPreference = "Stop"
+
+# Disable progress bar for much faster downloads
+$ProgressPreference = 'SilentlyContinue'
 
 # Create temp directory
 $TEMP_DIR = New-TemporaryFile | ForEach-Object { Remove-Item $_; New-Item -ItemType Directory -Path $_ }
@@ -32,6 +37,51 @@ function Check-Success {
     } else {
         Write-Host "[ERROR] $Message failed" -ForegroundColor Red
         exit 1
+    }
+}
+
+# Robust download function with fallback
+function Download-File {
+    param(
+        [string]$Url,
+        [string]$OutFile,
+        [string]$Description
+    )
+
+    # Get file size if possible for progress indication
+    $fileSize = ""
+    try {
+        $response = Invoke-WebRequest -Uri $Url -Method Head -UseBasicParsing
+        $contentLength = $response.Headers.'Content-Length'
+        if ($contentLength) {
+            $sizeMB = [math]::Round($contentLength / 1MB, 1)
+            $fileSize = " (approximately $sizeMB MB)"
+        }
+    } catch {
+        # If we can't get file size, continue anyway
+    }
+
+    Write-Host "   Downloading $Description$fileSize..." -ForegroundColor Gray
+
+    # Try using .NET WebClient first (faster)
+    try {
+        $webClient = New-Object System.Net.WebClient
+        $webClient.DownloadFile($Url, $OutFile)
+        Write-Host "   Download complete" -ForegroundColor Gray
+        return $true
+    } catch {
+        Write-Host "   WebClient failed, trying alternative method..." -ForegroundColor Yellow
+    }
+
+    # Fallback to Invoke-WebRequest
+    try {
+        Invoke-WebRequest -Uri $Url -OutFile $OutFile -UseBasicParsing
+        Write-Host "   Download complete" -ForegroundColor Gray
+        return $true
+    } catch {
+        Write-Host "[ERROR] Failed to download $Description" -ForegroundColor Red
+        Write-Host "   Error: $_" -ForegroundColor Red
+        return $false
     }
 }
 
@@ -163,12 +213,13 @@ if ($CurrentRVersion -eq $LatestRVersion -and -not $RInProgramFiles) {
         Write-Host "   R update available: $CurrentRVersion -> $LatestRVersion" -ForegroundColor Yellow
     }
 
-    Write-Host "   Downloading R installer from CRAN..." -ForegroundColor Gray
     if (-not $RURL) {
         Write-Host "[ERROR] Could not determine R download URL" -ForegroundColor Red
         exit 1
     }
-    Invoke-WebRequest -Uri $RURL -OutFile "R-installer.exe"
+    if (-not (Download-File -Url $RURL -OutFile "R-installer.exe" -Description "R installer")) {
+        exit 1
+    }
     Check-Success "R download"
 
     Write-Host "   Installing R to $SystemDrive\R..." -ForegroundColor Gray
@@ -226,12 +277,13 @@ if ($CurrentRStudioVersion -and $LatestRStudioVersion -and ($CurrentRStudioVersi
         Write-Host "   RStudio not installed, will install version $LatestRStudioVersion" -ForegroundColor Yellow
     }
 
-    Write-Host "   Downloading RStudio from Posit..." -ForegroundColor Gray
     if (-not $RStudioURL) {
         Write-Host "[ERROR] Could not determine RStudio download URL" -ForegroundColor Red
         exit 1
     }
-    Invoke-WebRequest -Uri $RStudioURL -OutFile "RStudio-installer.exe"
+    if (-not (Download-File -Url $RStudioURL -OutFile "RStudio-installer.exe" -Description "RStudio installer")) {
+        exit 1
+    }
     Check-Success "RStudio download"
 
     Write-Host "   Installing RStudio..." -ForegroundColor Gray
@@ -258,9 +310,10 @@ foreach ($path in $7ZipPaths) {
 }
 
 if (-not $7ZipInstalled) {
-    Write-Host "   Downloading 7-Zip..." -ForegroundColor Gray
     $7ZipURL = "https://www.7-zip.org/a/7z2501-x64.exe"
-    Invoke-WebRequest -Uri $7ZipURL -OutFile "7zip-installer.exe"
+    if (-not (Download-File -Url $7ZipURL -OutFile "7zip-installer.exe" -Description "7-Zip installer")) {
+        exit 1
+    }
     Check-Success "7-Zip download"
 
     Write-Host "   Installing 7-Zip..." -ForegroundColor Gray
@@ -288,8 +341,9 @@ Write-Host "Step 4: Installing Radiant and R packages..." -ForegroundColor Yello
 Write-Host "   This may take several minutes..." -ForegroundColor Gray
 
 # Download R script for package installation
-Write-Host "   Downloading package installation script..." -ForegroundColor Gray
-Invoke-WebRequest -Uri "https://raw.githubusercontent.com/vnijs/radiant_install/main/install_packages.R" -OutFile "install_packages.R"
+if (-not (Download-File -Url "https://raw.githubusercontent.com/vnijs/radiant_install/main/install_packages.R" -OutFile "install_packages.R" -Description "package installation script")) {
+    exit 1
+}
 Check-Success "Download package script"
 
 # Find R executable
@@ -308,8 +362,9 @@ Write-Host "Step 5: Installing TinyTeX for PDF reports..." -ForegroundColor Yell
 Write-Host "   This enables PDF generation in Radiant reports..." -ForegroundColor Gray
 
 # Download R script for TinyTeX installation
-Write-Host "   Downloading TinyTeX installation script..." -ForegroundColor Gray
-Invoke-WebRequest -Uri "https://raw.githubusercontent.com/vnijs/radiant_install/main/install_tinytex.R" -OutFile "install_tinytex.R"
+if (-not (Download-File -Url "https://raw.githubusercontent.com/vnijs/radiant_install/main/install_tinytex.R" -OutFile "install_tinytex.R" -Description "TinyTeX installation script")) {
+    exit 1
+}
 Check-Success "Download TinyTeX script"
 
 & $RExePath.FullName --slave --no-restore --file=install_tinytex.R

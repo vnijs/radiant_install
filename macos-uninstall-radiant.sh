@@ -10,12 +10,16 @@ echo ""
 echo "⚠️  WARNING: This will completely remove R, RStudio, and all R packages"
 echo ""
 
-# Ask for confirmation
-read -p "Are you sure you want to uninstall? (yes/no): " -r REPLY
-echo
-if [[ ! $REPLY =~ ^[Yy]es$ ]]; then
-    echo "Uninstall cancelled."
-    exit 0
+# Ask for confirmation (skip in CI mode)
+if [ "$CI" != "true" ]; then
+    read -p "Are you sure you want to uninstall? (yes/no): " -r REPLY
+    echo
+    if [[ ! $REPLY =~ ^[Yy]es$ ]]; then
+        echo "Uninstall cancelled."
+        exit 0
+    fi
+else
+    echo "CI Mode: Auto-confirming uninstall"
 fi
 
 echo "🔧 Starting uninstallation process..."
@@ -28,11 +32,11 @@ remove_item() {
     
     if [ -e "$item" ]; then
         echo "   Removing $description..."
-        sudo rm -rf "$item" 2>/dev/null
-        if [ $? -eq 0 ]; then
-            echo "   ✅ Removed: $description"
-        else
+        sudo rm -rf "$item" 2>/dev/null || true
+        if [ -e "$item" ]; then
             echo "   ⚠️  Could not remove: $description"
+        else
+            echo "   ✅ Removed: $description"
         fi
     fi
 }

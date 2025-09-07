@@ -1,6 +1,19 @@
 # Radiant Uninstall Script for Windows
 # This script removes R, RStudio, and all associated files
 
+# Error handler to ensure window stays open
+trap {
+    Write-Host ""
+    Write-Host "An error occurred during uninstallation:" -ForegroundColor Red
+    Write-Host $_ -ForegroundColor Red
+    Write-Host ""
+    if ($env:CI -ne "true") {
+        Write-Host "Press Enter to close this window..." -ForegroundColor Yellow
+        Read-Host
+    }
+    exit 1
+}
+
 # Require Administrator privileges
 if (-NOT ([Security.Principal.WindowsPrincipal] [Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole] "Administrator")) {
     Write-Host "This script requires Administrator privileges. Restarting as Administrator..." -ForegroundColor Yellow
@@ -16,10 +29,17 @@ Write-Host "WARNING: This will completely remove R, RStudio, and all R packages"
 Write-Host ""
 
 # Ask for confirmation
-$confirmation = Read-Host "Are you sure you want to uninstall? Type 'yes' to confirm"
-if ($confirmation -ne 'yes') {
-    Write-Host "Uninstall cancelled." -ForegroundColor Yellow
-    exit
+if ($env:CI -ne "true") {
+    $confirmation = Read-Host "Are you sure you want to uninstall? Type 'yes' to confirm"
+    if ($confirmation -ne 'yes') {
+        Write-Host "Uninstall cancelled." -ForegroundColor Yellow
+        Write-Host ""
+        Write-Host "Press Enter to close this window..." -ForegroundColor Yellow
+        Read-Host
+        exit
+    }
+} else {
+    Write-Host "CI Mode: Auto-confirming uninstall" -ForegroundColor Gray
 }
 
 Write-Host ""
@@ -28,6 +48,9 @@ Write-Host ""
 
 # Set error action preference
 $ErrorActionPreference = "SilentlyContinue"
+
+# Disable progress bar for faster operations
+$ProgressPreference = 'SilentlyContinue'
 
 # Get system drive
 $SystemDrive = $env:SystemDrive
@@ -208,7 +231,12 @@ Write-Host ""
 
 # 7. Remove 7-Zip (optional - ask user)
 Write-Host "Step 7: 7-Zip..." -ForegroundColor Yellow
-$remove7Zip = Read-Host "Do you want to remove 7-Zip as well? (yes/no)"
+if ($env:CI -eq "true") {
+    $remove7Zip = "no"  # Don't remove 7-Zip in CI by default
+    Write-Host "   CI Mode: Skipping 7-Zip removal" -ForegroundColor Gray
+} else {
+    $remove7Zip = Read-Host "Do you want to remove 7-Zip as well? (yes/no)"
+}
 if ($remove7Zip -eq 'yes') {
     # Try uninstaller first
     $7ZipUninstallers = @(
@@ -306,6 +334,8 @@ Write-Host "To reinstall Radiant, run:" -ForegroundColor Cyan
 Write-Host "iwr -useb https://raw.githubusercontent.com/vnijs/radiant_install/main/windows-install-radiant.ps1 | iex" -ForegroundColor Gray
 Write-Host ""
 
-# Pause before closing
-Write-Host "Press Enter to close this window..." -ForegroundColor Yellow
-Read-Host
+# Pause before closing (unless in CI mode)
+if ($env:CI -ne "true") {
+    Write-Host "Press Enter to close this window..." -ForegroundColor Yellow
+    Read-Host
+}

@@ -17,7 +17,7 @@ install <- function(x) {
   pkgs <- x[!x %in% ipkgs]
   if (length(pkgs) > 0) {
     cat(paste("   Installing:", paste(pkgs, collapse = ", "), "\n"))
-    install.packages(pkgs, lib = .libPaths()[1], type = os_type, repos = repos)
+    install.packages(pkgs, lib = .libPaths()[1], type = os_type, repos = "https://packagemanager.posit.co/cran/2025-12-01")
   }
 }
 

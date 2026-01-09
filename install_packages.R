@@ -1,6 +1,6 @@
 # Set options
 options(HTTPUserAgent = sprintf("R/%s R (%s)", getRversion(), paste(getRversion(), R.version$platform, R.version$arch, R.version$os)))
-repos <- c(CRAN = "https://cloud.r-project.org")
+repos <- c(CRAN = "https://packagemanager.posit.co/cran/2025-12-01", RSM="https://radiant-rstats.github.io/minicran")
 options(repos = repos)
 
 # Determine package type based on OS

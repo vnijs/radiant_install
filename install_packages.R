@@ -17,7 +17,7 @@ install <- function(x) {
   pkgs <- x[!x %in% ipkgs]
   if (length(pkgs) > 0) {
     cat(paste("   Installing:", paste(pkgs, collapse = ", "), "\n"))
-    install.packages(pkgs, lib = .libPaths()[1], type = os_type)
+    install.packages(pkgs, lib = .libPaths()[1], type = os_type, repos = repos)
   }
 }
 

@@ -22,6 +22,7 @@ install <- function(x) {
 }
 
 # Install core packages
+install.packages("xgboost", lib = .libPaths()[1], type = os_type, repos = "https://cloud.r-project.org/")
 install(c("radiant", "miniUI", "webshot", "usethis", "remotes", "tinytex"))
 
 # Install PhantomJS for webshot

@@ -22,7 +22,7 @@ install <- function(x) {
 }
 
 # Install core packages
-install(c("radiant", "miniUI", "webshot", "usethis", "remotes", "tinytex", "pdp"))
+install(c("radiant", "miniUI", "webshot", "usethis", "remotes", "tinytex", "pdp", "carData"))
 
 # Install PhantomJS for webshot
 cat("Installing PhantomJS for screenshots...\n")

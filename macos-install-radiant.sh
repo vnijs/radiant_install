@@ -14,8 +14,8 @@ echo ""
 # Check macOS version
 echo "🔍 Checking system compatibility..."
 macos_version=$(sw_vers -productVersion)
-if [[ $(echo "$macos_version 10.15" | tr " " "\n" | sort -V | head -n1) != "10.15" ]]; then
-    echo "❌ This installer requires macOS 10.15 (Catalina) or later"
+if [[ $(echo "$macos_version 14.0" | tr " " "\n" | sort -V | head -n1) != "14.0" ]]; then
+    echo "❌ This installer requires macOS 14.0 (Sonoma) or later"
     echo "   Your version: $macos_version"
     exit 1
 fi
@@ -89,10 +89,14 @@ fi
 
 # Get latest RStudio version from Posit
 echo "   Checking latest RStudio version from Posit..."
-RSTUDIO_PAGE=$(curl -s "https://posit.co/download/rstudio-desktop/")
-RSTUDIO_URL="https:$(echo "$RSTUDIO_PAGE" | grep -o '//download1\.rstudio\.org/electron/macos/RStudio-[^"]*\.dmg' | head -n1)"
-LATEST_RSTUDIO_VERSION=$(echo "$RSTUDIO_URL" | sed 's/.*RStudio-//' | sed 's/\.dmg//' | sed 's/-/+/')
+RSTUDIO_URL=$(curl -fsSLI -o /dev/null -w '%{url_effective}' "https://rstudio.org/download/latest/stable/desktop/mac/RStudio-latest.dmg")
+LATEST_RSTUDIO_VERSION=$(echo "$RSTUDIO_URL" | sed -n 's/.*RStudio-\([0-9.]*\)-\([0-9]*\)\.dmg.*/\1+\2/p')
 echo "   Latest RStudio version: $LATEST_RSTUDIO_VERSION"
+
+if [[ -z "$RSTUDIO_URL" || -z "$LATEST_RSTUDIO_VERSION" ]]; then
+    echo "❌ Could not determine latest RStudio version"
+    exit 1
+fi
 
 if [[ "$CURRENT_RSTUDIO_VERSION" == "$LATEST_RSTUDIO_VERSION" ]]; then
     echo "✅ RStudio is already up to date (version $CURRENT_RSTUDIO_VERSION)"

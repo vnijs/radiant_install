@@ -199,25 +199,37 @@ jobs:
           
           # Test version checking
           Write-Host "Testing R version check..."
-          try {
-              $Response = Invoke-WebRequest -Uri "https://cloud.r-project.org/bin/windows/base/release.html" -MaximumRedirection 0 -ErrorAction SilentlyContinue
-          } catch {
-              if ($_.Exception.Response.StatusCode -eq 302) {
-                  $RURL = $_.Exception.Response.Headers.Location.ToString()
-                  if ($RURL -match "R-(\d+\.\d+\.\d+)-win.exe") {
-                      Write-Host "Latest R version detected: $($matches[1])"
-                      Write-Host "Download URL: $RURL"
+          $ReleasePage = Invoke-WebRequest -Uri "https://cloud.r-project.org/bin/windows/base/release.html" -UseBasicParsing
+          $RURL = $null
+          if ($ReleasePage.Content -match "URL=(R-\d+\.\d+\.\d+-win\.exe)") {
+              $RURL = "https://cloud.r-project.org/bin/windows/base/$($matches[1])"
+          }
+          if (-not $RURL) {
+              try {
+                  $Response = Invoke-WebRequest -Uri "https://cloud.r-project.org/bin/windows/base/release.html" -MaximumRedirection 0 -UseBasicParsing -ErrorAction SilentlyContinue
+              } catch {
+                  if ($_.Exception.Response.StatusCode -eq 302) {
+                      $RURL = $_.Exception.Response.Headers.Location.ToString()
                   }
               }
           }
+          if ($RURL -match "R-(\d+\.\d+\.\d+)-win.exe") {
+              Write-Host "Latest R version detected: $($matches[1])"
+              Write-Host "Download URL: $RURL"
+          } else {
+              Write-Host "Could not detect R version"
+              exit 1
+          }
           
           Write-Host "Testing RStudio version check..."
-          $RStudioPage = Invoke-WebRequest -Uri "https://posit.co/download/rstudio-desktop/" -UseBasicParsing
-          if ($RStudioPage.Content -match '//download1\.rstudio\.org/electron/windows/RStudio-([^"]+)\.exe') {
-              $RStudioURL = "https:$($matches[0])"
-              $Version = $matches[1] -replace '-', '+'
-              Write-Host "Latest RStudio version detected: $Version"
-              Write-Host "Download URL: $RStudioURL"
+          $RStudioMetadata = Invoke-WebRequest -Uri "https://www.rstudio.com/wp-content/downloads.json" -UseBasicParsing | Select-Object -ExpandProperty Content | ConvertFrom-Json
+          $RStudioInstaller = $RStudioMetadata.rstudio.open_source.stable.desktop.installer.windows
+          if ($RStudioInstaller.url -and $RStudioInstaller.version) {
+              Write-Host "Latest RStudio version detected: $($RStudioInstaller.version)"
+              Write-Host "Download URL: $($RStudioInstaller.url)"
+          } else {
+              Write-Host "Could not detect RStudio metadata"
+              exit 1
           }
           
           # Cleanup
@@ -398,7 +410,7 @@ jobs:
           # Test macOS version check
           echo "Testing macOS version check..."
           macos_version=$(sw_vers -productVersion)
-          if [[ $(echo "$macos_version 10.15" | tr " " "\n" | sort -V | head -n1) != "10.15" ]]; then
+          if [[ $(echo "$macos_version 14.0" | tr " " "\n" | sort -V | head -n1) != "14.0" ]]; then
               echo "❌ macOS version check failed"
               exit 1
           fi
@@ -416,9 +428,10 @@ jobs:
           
           # Test RStudio URL extraction
           echo "Testing RStudio version detection..."
-          RSTUDIO_PAGE=$(curl -s "https://posit.co/download/rstudio-desktop/")
-          RSTUDIO_URL="https:$(echo "$RSTUDIO_PAGE" | grep -o '//download1\.rstudio\.org/electron/macos/RStudio-[^"]*\.dmg' | head -n1)"
-          if [[ "$RSTUDIO_URL" != "https:" ]] && [[ -n "$RSTUDIO_URL" ]]; then
+          RSTUDIO_URL=$(curl -fsSLI -o /dev/null -w '%{url_effective}' "https://rstudio.org/download/latest/stable/desktop/mac/RStudio-latest.dmg")
+          LATEST_RSTUDIO_VERSION=$(echo "$RSTUDIO_URL" | sed -n 's/.*RStudio-\([0-9.]*\)-\([0-9]*\)\.dmg.*/\1+\2/p')
+          if [[ -n "$RSTUDIO_URL" && -n "$LATEST_RSTUDIO_VERSION" ]]; then
+              echo "✅ RStudio version detected: $LATEST_RSTUDIO_VERSION"
               echo "✅ RStudio URL detected: $RSTUDIO_URL"
           else
               echo "❌ Could not detect RStudio URL"

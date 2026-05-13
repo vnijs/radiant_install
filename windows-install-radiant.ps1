@@ -182,17 +182,25 @@ $ReleasePage = Invoke-WebRequest -Uri "https://cloud.r-project.org/bin/windows/b
 $RURL = $null
 $LatestRVersion = $null
 
-# The release.html page redirects to the actual installer
-# We need to get the redirect URL
-try {
-    $Response = Invoke-WebRequest -Uri "https://cloud.r-project.org/bin/windows/base/release.html" -MaximumRedirection 0 -ErrorAction SilentlyContinue
-} catch {
-    if ($_.Exception.Response.StatusCode -eq 302) {
-        $RURL = $_.Exception.Response.Headers.Location.ToString()
-        Write-Host "Redirect URL: $RURL"
-        if ($RURL -match "R-(\d+\.\d+\.\d+)-win.exe") {
-            $LatestRVersion = $matches[1]
-            Write-Host "   Latest R version: $LatestRVersion" -ForegroundColor Gray
+if ($ReleasePage.Content -match "URL=(R-\d+\.\d+\.\d+-win\.exe)") {
+    $RURL = "https://cloud.r-project.org/bin/windows/base/$($matches[1])"
+    if ($matches[1] -match "R-(\d+\.\d+\.\d+)-win.exe") {
+        $LatestRVersion = $matches[1]
+        Write-Host "   Latest R version: $LatestRVersion" -ForegroundColor Gray
+    }
+}
+
+# Some CRAN mirrors may redirect release.html to the actual installer.
+if (-not $RURL) {
+    try {
+        $Response = Invoke-WebRequest -Uri "https://cloud.r-project.org/bin/windows/base/release.html" -MaximumRedirection 0 -UseBasicParsing -ErrorAction SilentlyContinue
+    } catch {
+        if ($_.Exception.Response.StatusCode -eq 302) {
+            $RURL = $_.Exception.Response.Headers.Location.ToString()
+            if ($RURL -match "R-(\d+\.\d+\.\d+)-win.exe") {
+                $LatestRVersion = $matches[1]
+                Write-Host "   Latest R version: $LatestRVersion" -ForegroundColor Gray
+            }
         }
     }
 }
@@ -287,12 +295,36 @@ if ($RStudioExePath) {
 
 # Get latest RStudio version from Posit
 Write-Host "   Checking latest RStudio version from Posit..." -ForegroundColor Gray
-$RStudioPage = Invoke-WebRequest -Uri "https://posit.co/download/rstudio-desktop/" -UseBasicParsing
-$pattern = '//download1\.rstudio\.org/electron/windows/RStudio-([\d\.]+)-(\d+)\.exe'
-if ($RStudioPage.Content -match $pattern) {
-    $RStudioURL = "https://download1.rstudio.org/electron/windows/RStudio-$($matches[1])-$($matches[2]).exe"
-    # Build version string from pattern match
-    $LatestRStudioVersion = "$($matches[1])+$($matches[2])"
+$RStudioURL = $null
+$LatestRStudioVersion = $null
+
+try {
+    $RStudioMetadata = Invoke-WebRequest -Uri "https://www.rstudio.com/wp-content/downloads.json" -UseBasicParsing | Select-Object -ExpandProperty Content | ConvertFrom-Json
+    $RStudioInstaller = $RStudioMetadata.rstudio.open_source.stable.desktop.installer.windows
+    if ($RStudioInstaller.url -and $RStudioInstaller.version) {
+        $RStudioURL = $RStudioInstaller.url
+        $LatestRStudioVersion = $RStudioInstaller.version
+    }
+} catch {
+    Write-Host "   Could not read Posit downloads metadata, trying stable redirect..." -ForegroundColor Yellow
+}
+
+if (-not $RStudioURL -or -not $LatestRStudioVersion) {
+    $RStudioStableURL = "https://rstudio.org/download/latest/stable/desktop/windows/RStudio-latest.exe"
+    try {
+        $Response = Invoke-WebRequest -Uri $RStudioStableURL -MaximumRedirection 0 -UseBasicParsing -ErrorAction Stop
+    } catch {
+        if ($_.Exception.Response -and ($_.Exception.Response.StatusCode -eq 301 -or $_.Exception.Response.StatusCode -eq 302)) {
+            $RStudioURL = $_.Exception.Response.Headers.Location.ToString()
+        }
+    }
+
+    if ($RStudioURL -match "RStudio-([\d\.]+)-(\d+)\.exe") {
+        $LatestRStudioVersion = "$($matches[1])+$($matches[2])"
+    }
+}
+
+if ($LatestRStudioVersion) {
     Write-Host "   Latest RStudio version: $LatestRStudioVersion" -ForegroundColor Gray
 }
 

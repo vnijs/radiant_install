@@ -9,13 +9,13 @@ on:
 
 jobs:
   test-windows-full-install:
-    runs-on: windows-latest
+    runs-on: windows-2025
     name: Test Windows Full Installation
     # Only run full install on manual trigger or main branch
     if: github.event_name == 'workflow_dispatch' || (github.event_name == 'push' && github.ref == 'refs/heads/main')
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Run full Windows installation
         shell: powershell
@@ -167,11 +167,11 @@ jobs:
           }
 
   test-windows:
-    runs-on: windows-latest
+    runs-on: windows-2025
     name: Test Windows Installer
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Test PowerShell script syntax
         shell: powershell
@@ -261,13 +261,13 @@ jobs:
           Write-Host "PowerShell version: $($PSVersionTable.PSVersion)"
 
   test-macos-full-install:
-    runs-on: macos-latest
+    runs-on: macos-15
     name: Test macOS Full Installation
     # Only run full install on manual trigger or main branch
     if: github.event_name == 'workflow_dispatch' || (github.event_name == 'push' && github.ref == 'refs/heads/main')
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Run full macOS installation
         run: |
@@ -391,11 +391,11 @@ jobs:
           fi
 
   test-macos:
-    runs-on: macos-latest
+    runs-on: macos-15
     name: Test macOS Installer
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Test bash script syntax
         run: |

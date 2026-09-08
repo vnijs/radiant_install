@@ -4,10 +4,23 @@
 
 # Handle running from iwr | iex (no $PSCommandPath available)
 if (-not $PSCommandPath) {
-    # Save script to temp file for proper execution with admin privileges
+    # Save script to temp file for proper execution with admin privileges.
+    # NOTE: when this script is piped from `iwr | iex`, $MyInvocation.MyCommand.ScriptBlock
+    # is the caller's one-line command ("iwr ... | iex"), NOT this script. Writing that to
+    # the temp file makes the elevated window re-bootstrap instead of running the script we
+    # already downloaded. Re-download the real script body instead.
+    $ScriptUrl = "https://raw.githubusercontent.com/vnijs/radiant_install/main/windows-install-radiant.ps1"
     $TempScript = "$env:TEMP\radiant-install-$(Get-Random).ps1"
-    $MyInvocation.MyCommand.ScriptBlock | Out-File -FilePath $TempScript -Encoding UTF8
-    
+    try {
+        $ScriptBody = (New-Object System.Net.WebClient).DownloadString($ScriptUrl)
+    } catch {
+        Write-Host "[ERROR] Could not download the installer script from $ScriptUrl" -ForegroundColor Red
+        Write-Host "   Error: $_" -ForegroundColor Red
+        exit 1
+    }
+    # Write without a BOM so powershell.exe -File parses it cleanly
+    [System.IO.File]::WriteAllText($TempScript, $ScriptBody, (New-Object System.Text.UTF8Encoding($false)))
+
     if (-NOT ([Security.Principal.WindowsPrincipal] [Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole] "Administrator")) {
         Write-Host "This script requires Administrator privileges. Opening Administrator PowerShell..." -ForegroundColor Yellow
         Write-Host "The installation will continue in the new window..." -ForegroundColor Gray
@@ -52,6 +65,130 @@ function Check-Success {
         Write-Host "[ERROR] $Message failed" -ForegroundColor Red
         exit 1
     }
+}
+
+function Invoke-Installer {
+    param(
+        [string]$FilePath,
+        [string]$ArgumentList,
+        [string]$Description
+    )
+
+    $process = Start-Process -FilePath $FilePath -ArgumentList $ArgumentList -Wait -PassThru
+    if ($process.ExitCode -eq 0 -or $process.ExitCode -eq 3010) {
+        Write-Host "[OK] $Description successful" -ForegroundColor Green
+    } else {
+        Write-Host "[ERROR] $Description failed with exit code $($process.ExitCode)" -ForegroundColor Red
+        exit 1
+    }
+}
+
+function Get-RStudioPaths {
+    param([switch]$MachineOnly)
+
+    $paths = @(
+        "${env:ProgramFiles}\RStudio\rstudio.exe",
+        "${env:ProgramFiles}\RStudio\bin\rstudio.exe"
+    )
+
+    if ($env:ProgramFiles -and ${env:ProgramFiles(x86)}) {
+        $paths += @(
+            "${env:ProgramFiles(x86)}\RStudio\rstudio.exe",
+            "${env:ProgramFiles(x86)}\RStudio\bin\rstudio.exe"
+        )
+    }
+
+    if (-not $MachineOnly) {
+        $paths += @(
+            "${env:LocalAppData}\Programs\RStudio\rstudio.exe",
+            "${env:LocalAppData}\Programs\RStudio\bin\rstudio.exe"
+        )
+    }
+
+    return $paths
+}
+
+function Get-RStudioExePath {
+    param([switch]$MachineOnly)
+
+    foreach ($path in (Get-RStudioPaths -MachineOnly:$MachineOnly)) {
+        if (Test-Path $path) {
+            return $path
+        }
+    }
+
+    return $null
+}
+
+function New-RStudioShortcut {
+    param([string]$TargetPath)
+
+    $startMenuDir = Join-Path $env:ProgramData "Microsoft\Windows\Start Menu\Programs\RStudio"
+    New-Item -ItemType Directory -Path $startMenuDir -Force | Out-Null
+
+    $shortcutPath = Join-Path $startMenuDir "RStudio.lnk"
+    $shell = New-Object -ComObject WScript.Shell
+    $shortcut = $shell.CreateShortcut($shortcutPath)
+    $shortcut.TargetPath = $TargetPath
+    $shortcut.WorkingDirectory = Split-Path $TargetPath -Parent
+    $shortcut.Save()
+}
+
+function Install-RStudioArchive {
+    param([string]$Url)
+
+    if (-not $Url) {
+        Write-Host "[ERROR] Could not determine RStudio archive URL" -ForegroundColor Red
+        exit 1
+    }
+
+    if (-not (Download-File -Url $Url -OutFile "RStudio-archive.zip" -Description "RStudio archive")) {
+        exit 1
+    }
+    Check-Success "RStudio archive download"
+
+    $archivePath = Join-Path (Get-Location) "RStudio-archive.zip"
+    $extractRoot = Join-Path (Get-Location) "RStudio-archive"
+    if (Test-Path $extractRoot) {
+        Remove-Item -Path $extractRoot -Recurse -Force
+    }
+
+    Write-Host "   Extracting RStudio archive..." -ForegroundColor Gray
+    Expand-Archive -Path $archivePath -DestinationPath $extractRoot -Force
+
+    $extractedExe = Get-ChildItem -Path $extractRoot -Recurse -Filter "rstudio.exe" |
+        Where-Object { $_.FullName -match "\\bin\\rstudio\.exe$" } |
+        Select-Object -First 1
+    if (-not $extractedExe) {
+        $extractedExe = Get-ChildItem -Path $extractRoot -Recurse -Filter "rstudio.exe" | Select-Object -First 1
+    }
+    if (-not $extractedExe) {
+        Write-Host "[ERROR] RStudio archive did not contain rstudio.exe" -ForegroundColor Red
+        exit 1
+    }
+
+    if ($extractedExe.Directory.Name -ieq "bin") {
+        $sourceRoot = $extractedExe.Directory.Parent.FullName
+    } else {
+        $sourceRoot = $extractedExe.Directory.FullName
+    }
+
+    $installRoot = Join-Path $env:ProgramFiles "RStudio"
+    if (Test-Path $installRoot) {
+        Remove-Item -Path $installRoot -Recurse -Force
+    }
+
+    Write-Host "   Installing RStudio archive to $installRoot..." -ForegroundColor Gray
+    Move-Item -Path $sourceRoot -Destination $installRoot
+
+    $installedExe = Get-RStudioExePath -MachineOnly
+    if (-not $installedExe) {
+        Write-Host "[ERROR] RStudio archive extraction completed, but rstudio.exe was not found in $installRoot" -ForegroundColor Red
+        exit 1
+    }
+
+    New-RStudioShortcut -TargetPath $installedExe
+    Write-Host "[OK] RStudio archive installation successful" -ForegroundColor Green
 }
 
 # Robust download function with fallback
@@ -250,16 +387,22 @@ if ($CurrentRVersion -eq $LatestRVersion -and -not $RInProgramFiles) {
     Write-Host "   Installing R to $SystemDrive\R..." -ForegroundColor Gray
     # Silent install with custom directory
     $RInstallerPath = Join-Path (Get-Location) "R-installer.exe"
-    Start-Process -FilePath $RInstallerPath -ArgumentList "/VERYSILENT /DIR=`"$SystemDrive\R\R-$LatestRVersion`"" -Wait
-    Check-Success "R installation"
+    Invoke-Installer -FilePath $RInstallerPath -ArgumentList "/VERYSILENT /DIR=`"$SystemDrive\R\R-$LatestRVersion`"" -Description "R installation"
+}
 
-    # Add R to PATH if not already there
-    $RBinPath = "$SystemDrive\R\R-$LatestRVersion\bin\x64"
+# Always make sure R is on PATH. This used to live inside the install branch above, so a
+# machine whose R was already up to date could be left with R missing from PATH.
+$RBinDir = Get-ChildItem "$SystemDrive\R\R-*\bin\x64" -ErrorAction SilentlyContinue |
+           Sort-Object Name | Select-Object -Last 1
+if ($RBinDir) {
+    $RBinPath = $RBinDir.FullName
     $CurrentPath = [Environment]::GetEnvironmentVariable("Path", "Machine")
     if ($CurrentPath -notlike "*$RBinPath*") {
         [Environment]::SetEnvironmentVariable("Path", "$CurrentPath;$RBinPath", "Machine")
-        $env:Path = "$env:Path;$RBinPath"
         Write-Host "   Added R to system PATH" -ForegroundColor Gray
+    }
+    if ($env:Path -notlike "*$RBinPath*") {
+        $env:Path = "$env:Path;$RBinPath"
     }
 }
 Write-Host ""
@@ -269,21 +412,8 @@ Write-Host "Step 2: Checking RStudio installation..." -ForegroundColor Yellow
 
 # Get current RStudio version if installed
 $CurrentRStudioVersion = $null
-# Check multiple possible RStudio locations
-$RStudioPaths = @(
-    "${env:ProgramFiles}\RStudio\rstudio.exe",
-    "${env:ProgramFiles}\RStudio\bin\rstudio.exe",
-    "${env:LocalAppData}\Programs\RStudio\rstudio.exe",
-    "${env:LocalAppData}\Programs\RStudio\bin\rstudio.exe"
-)
-
-$RStudioExePath = $null
-foreach ($path in $RStudioPaths) {
-    if (Test-Path $path) {
-        $RStudioExePath = $path
-        break
-    }
-}
+$RStudioExePath = Get-RStudioExePath
+$MachineRStudioExePath = Get-RStudioExePath -MachineOnly
 
 if ($RStudioExePath) {
     $VersionInfo = (Get-Item $RStudioExePath).VersionInfo
@@ -291,19 +421,27 @@ if ($RStudioExePath) {
         $CurrentRStudioVersion = $VersionInfo.ProductVersion
         Write-Host "   Current RStudio version: $CurrentRStudioVersion" -ForegroundColor Gray
     }
+    if (-not $MachineRStudioExePath) {
+        Write-Host "   Existing RStudio was found outside Program Files; installing a machine-wide copy." -ForegroundColor Yellow
+    }
 }
 
 # Get latest RStudio version from Posit
 Write-Host "   Checking latest RStudio version from Posit..." -ForegroundColor Gray
 $RStudioURL = $null
+$RStudioArchiveURL = $null
 $LatestRStudioVersion = $null
 
 try {
     $RStudioMetadata = Invoke-WebRequest -Uri "https://www.rstudio.com/wp-content/downloads.json" -UseBasicParsing | Select-Object -ExpandProperty Content | ConvertFrom-Json
     $RStudioInstaller = $RStudioMetadata.rstudio.open_source.stable.desktop.installer.windows
+    $RStudioArchive = $RStudioMetadata.rstudio.open_source.stable.desktop.archive.windows
     if ($RStudioInstaller.url -and $RStudioInstaller.version) {
         $RStudioURL = $RStudioInstaller.url
         $LatestRStudioVersion = $RStudioInstaller.version
+    }
+    if ($RStudioArchive.url) {
+        $RStudioArchiveURL = $RStudioArchive.url
     }
 } catch {
     Write-Host "   Could not read Posit downloads metadata, trying stable redirect..." -ForegroundColor Yellow
@@ -324,11 +462,26 @@ if (-not $RStudioURL -or -not $LatestRStudioVersion) {
     }
 }
 
+if (-not $RStudioArchiveURL) {
+    $RStudioArchiveStableURL = "https://rstudio.org/download/latest/stable/desktop/windows/RStudio-latest.zip"
+    try {
+        $Response = Invoke-WebRequest -Uri $RStudioArchiveStableURL -MaximumRedirection 0 -UseBasicParsing -ErrorAction Stop
+    } catch {
+        if ($_.Exception.Response -and ($_.Exception.Response.StatusCode -eq 301 -or $_.Exception.Response.StatusCode -eq 302)) {
+            $RStudioArchiveURL = $_.Exception.Response.Headers.Location.ToString()
+        }
+    }
+}
+
+if (-not $RStudioArchiveURL -and $RStudioURL) {
+    $RStudioArchiveURL = $RStudioURL -replace "\.exe$", ".zip"
+}
+
 if ($LatestRStudioVersion) {
     Write-Host "   Latest RStudio version: $LatestRStudioVersion" -ForegroundColor Gray
 }
 
-if ($CurrentRStudioVersion -and $LatestRStudioVersion -and ($CurrentRStudioVersion -eq $LatestRStudioVersion)) {
+if ($MachineRStudioExePath -and $CurrentRStudioVersion -and $LatestRStudioVersion -and ($CurrentRStudioVersion -eq $LatestRStudioVersion)) {
     Write-Host "[OK] RStudio is already up to date (version $CurrentRStudioVersion)" -ForegroundColor Green
 } else {
     if (-not $LatestRStudioVersion) {
@@ -353,8 +506,23 @@ if ($CurrentRStudioVersion -and $LatestRStudioVersion -and ($CurrentRStudioVersi
 
     Write-Host "   Installing RStudio..." -ForegroundColor Gray
     $RStudioInstallerPath = Join-Path (Get-Location) "RStudio-installer.exe"
-    Start-Process -FilePath $RStudioInstallerPath -ArgumentList "/S" -Wait
-    Check-Success "RStudio installation"
+    $RStudioInstallDir = Join-Path $env:ProgramFiles "RStudio"
+    Invoke-Installer -FilePath $RStudioInstallerPath -ArgumentList "/S /allusers /D=$RStudioInstallDir" -Description "RStudio installer"
+
+    $MachineRStudioExePath = Get-RStudioExePath -MachineOnly
+    if (-not $MachineRStudioExePath) {
+        Write-Host "   RStudio installer completed but rstudio.exe was not found in Program Files." -ForegroundColor Yellow
+        Write-Host "   Installing the official RStudio archive instead..." -ForegroundColor Yellow
+        Install-RStudioArchive -Url $RStudioArchiveURL
+        $MachineRStudioExePath = Get-RStudioExePath -MachineOnly
+    }
+
+    if (-not $MachineRStudioExePath) {
+        Write-Host "[ERROR] RStudio installation failed: rstudio.exe was not found in Program Files" -ForegroundColor Red
+        exit 1
+    }
+
+    Write-Host "[OK] RStudio installed at $MachineRStudioExePath" -ForegroundColor Green
 }
 Write-Host ""
 
@@ -376,7 +544,27 @@ foreach ($path in $7ZipPaths) {
 }
 
 if (-not $7ZipInstalled) {
-    $7ZipURL = "https://www.7-zip.org/a/7z2501-x64.exe"
+    # Resolve the current 7-Zip build rather than pinning a version that 404s as soon as
+    # 7-Zip publishes a new release. The home page advertises the current version as
+    # "7-Zip 26.03 (2026-09-03)", which maps to /a/7z2603-x64.exe. Note that download.html
+    # lists only OLD releases, so it must not be used here - it would downgrade 7-Zip.
+    # Verify whatever we derive with a HEAD request and fall back to a known-good build.
+    $7ZipFallbackURL = "https://www.7-zip.org/a/7z2501-x64.exe"
+    $7ZipURL = $null
+    try {
+        $7ZipPage = Invoke-WebRequest -Uri "https://www.7-zip.org/" -UseBasicParsing
+        if ($7ZipPage.Content -match '7-Zip\s+(\d+)\.(\d+)\s*\(') {
+            $7ZipToken = "{0}{1:D2}" -f $matches[1], [int]$matches[2]
+            $7ZipCandidate = "https://www.7-zip.org/a/7z$7ZipToken-x64.exe"
+            $null = Invoke-WebRequest -Uri $7ZipCandidate -Method Head -UseBasicParsing
+            $7ZipURL = $7ZipCandidate
+        }
+    } catch {
+        Write-Host "   Could not resolve the latest 7-Zip release, using a known build" -ForegroundColor Yellow
+    }
+    if (-not $7ZipURL) {
+        $7ZipURL = $7ZipFallbackURL
+    }
     if (-not (Download-File -Url $7ZipURL -OutFile "7zip-installer.exe" -Description "7-Zip installer")) {
         exit 1
     }
@@ -384,8 +572,7 @@ if (-not $7ZipInstalled) {
 
     Write-Host "   Installing 7-Zip..." -ForegroundColor Gray
     $7ZipInstallerPath = Join-Path (Get-Location) "7zip-installer.exe"
-    Start-Process -FilePath $7ZipInstallerPath -ArgumentList "/S" -Wait
-    Check-Success "7-Zip installation"
+    Invoke-Installer -FilePath $7ZipInstallerPath -ArgumentList "/S" -Description "7-Zip installation"
 
     # Add 7-Zip to PATH
     if (Test-Path "${env:ProgramFiles}\7-Zip") {

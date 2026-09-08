@@ -11,10 +11,33 @@ echo "Radiant-for-R Installer for macOS"
 echo "======================================="
 echo ""
 
+version_at_least() {
+    local version="$1"
+    local minimum="$2"
+    local IFS=.
+    local version_parts minimum_parts i version_part minimum_part
+
+    read -ra version_parts <<< "$version"
+    read -ra minimum_parts <<< "$minimum"
+
+    for ((i = 0; i < ${#minimum_parts[@]}; i++)); do
+        version_part=${version_parts[i]:-0}
+        minimum_part=${minimum_parts[i]:-0}
+
+        if ((10#$version_part > 10#$minimum_part)); then
+            return 0
+        elif ((10#$version_part < 10#$minimum_part)); then
+            return 1
+        fi
+    done
+
+    return 0
+}
+
 # Check macOS version
 echo "🔍 Checking system compatibility..."
 macos_version=$(sw_vers -productVersion)
-if [[ $(echo "$macos_version 14.0" | tr " " "\n" | sort -V | head -n1) != "14.0" ]]; then
+if ! version_at_least "$macos_version" "14.0"; then
     echo "❌ This installer requires macOS 14.0 (Sonoma) or later"
     echo "   Your version: $macos_version"
     exit 1
@@ -38,35 +61,97 @@ check_success() {
     fi
 }
 
+CRAN_R_FRAMEWORK="/Library/Frameworks/R.framework"
+CRAN_R_FRAMEWORK_BIN="$CRAN_R_FRAMEWORK/Resources/bin/R"
+CRAN_R_CLI="/usr/local/bin/R"
+CRAN_RSCRIPT_CLI="/usr/local/bin/Rscript"
+
+r_version() {
+    "$1" --version 2>/dev/null | head -n1 | grep -o '[0-9]\+\.[0-9]\+\.[0-9]\+' || true
+}
+
+is_cran_r() {
+    local r_bin="$1"
+    local r_home
+
+    if [ ! -x "$r_bin" ]; then
+        return 1
+    fi
+
+    r_home=$("$r_bin" RHOME 2>/dev/null | head -n1 || true)
+    [[ "$r_home" == "$CRAN_R_FRAMEWORK/Resources"* ]]
+}
+
+find_cran_r() {
+    if is_cran_r "$CRAN_R_CLI"; then
+        echo "$CRAN_R_CLI"
+        return 0
+    fi
+
+    if [ -x "$CRAN_R_FRAMEWORK_BIN" ]; then
+        echo "$CRAN_R_FRAMEWORK_BIN"
+        return 0
+    fi
+
+    return 1
+}
+
 # Check and Install R
 echo "🔧 Step 1: Checking R installation..."
 
-# Get current R version if installed
+# Get current CRAN R version if installed. RStudio on macOS expects the CRAN
+# framework layout; an R from Homebrew, Nix, or another PATH entry is not enough.
 CURRENT_R_VERSION=""
-if command -v R &> /dev/null; then
-    CURRENT_R_VERSION=$(R --version 2>/dev/null | head -n1 | grep -o '[0-9]\+\.[0-9]\+\.[0-9]\+')
-    echo "   Current R version: $CURRENT_R_VERSION"
+PATH_R=$(command -v R || true)
+R_CMD=$(find_cran_r || true)
+
+if [[ -n "$R_CMD" ]]; then
+    CURRENT_R_VERSION=$(r_version "$R_CMD")
+    echo "   Current CRAN R version: $CURRENT_R_VERSION"
+    echo "   Current CRAN R path: $R_CMD"
+elif [[ -n "$PATH_R" ]]; then
+    echo "   Ignoring R found at $PATH_R"
+    echo "   RStudio on macOS needs CRAN R under /Library/Frameworks/R.framework"
 fi
 
 # Get latest R version from CRAN
 echo "   Checking latest R version from CRAN..."
-LATEST_R_VERSION=$(curl -s "https://cloud.r-project.org/bin/macosx/" | grep -o 'R-[0-9]\+\.[0-9]\+\.[0-9]\+' | head -n1 | cut -d'-' -f2)
+CRAN_MACOS_URL="https://cloud.r-project.org/bin/macosx/"
+CRAN_MACOS_PAGE=$(curl -fsSL "$CRAN_MACOS_URL")
+if [[ $(uname -m) == "x86_64" ]]; then
+    R_PKG_RELATIVE=$(printf "%s\n" "$CRAN_MACOS_PAGE" | sed -n 's/.*href="\([^"]*R-[0-9][0-9.]*-x86_64\.pkg\)".*/\1/p' | head -n1)
+else
+    R_PKG_RELATIVE=$(printf "%s\n" "$CRAN_MACOS_PAGE" | sed -n 's/.*href="\([^"]*R-[0-9][0-9.]*-arm64\.pkg\)".*/\1/p' | head -n1)
+fi
+
+if [[ -z "$R_PKG_RELATIVE" ]]; then
+    echo "❌ Could not determine R package URL"
+    exit 1
+fi
+
+R_PKG_URL="${CRAN_MACOS_URL}${R_PKG_RELATIVE}"
+if [[ "$R_PKG_RELATIVE" =~ R-([0-9]+\.[0-9]+\.[0-9]+)- ]]; then
+    LATEST_R_VERSION="${BASH_REMATCH[1]}"
+else
+    LATEST_R_VERSION=""
+fi
 echo "   Latest R version: $LATEST_R_VERSION"
+echo "   R package URL: $R_PKG_URL"
+
+if [[ -z "$LATEST_R_VERSION" ]]; then
+    echo "❌ Could not determine latest R version"
+    exit 1
+fi
 
 if [[ "$CURRENT_R_VERSION" == "$LATEST_R_VERSION" ]]; then
-    echo "✅ R is already up to date (version $CURRENT_R_VERSION)"
+    echo "✅ CRAN R is already up to date (version $CURRENT_R_VERSION)"
 else
     if [[ -n "$CURRENT_R_VERSION" ]]; then
         echo "   R update available: $CURRENT_R_VERSION → $LATEST_R_VERSION"
+    elif [[ -n "$PATH_R" ]]; then
+        echo "   Installing CRAN R because the existing R is not in a location RStudio can use"
     fi
     echo "   Downloading R installer from CRAN..."
-
-    # Check if we're on Intel Mac and adjust URL
-    if [[ $(uname -m) == "x86_64" ]]; then
-        R_PKG_URL="https://cloud.r-project.org/bin/macosx/big-sur-x86_64/base/R-release.pkg"
-    else
-        R_PKG_URL="https://cloud.r-project.org/bin/macosx/big-sur-arm64/base/R-release.pkg"
-    fi
 
     curl -L -o "R-installer.pkg" "$R_PKG_URL"
     check_success "R download"
@@ -75,6 +160,25 @@ else
     sudo installer -pkg "R-installer.pkg" -target /
     check_success "R installation"
 fi
+
+R_CMD=$(find_cran_r || true)
+if [[ -z "$R_CMD" ]]; then
+    echo "❌ CRAN R was not found after installation"
+    echo "   Expected: $CRAN_R_FRAMEWORK_BIN or $CRAN_R_CLI"
+    exit 1
+fi
+
+if [[ ! -d "$CRAN_R_FRAMEWORK" ]]; then
+    echo "❌ R framework not found at $CRAN_R_FRAMEWORK"
+    echo "   RStudio may not be able to discover R without the CRAN framework install"
+    exit 1
+fi
+
+if [[ ! -x "$CRAN_R_CLI" ]]; then
+    echo "   Warning: $CRAN_R_CLI was not found; using $R_CMD for package installation"
+fi
+
+echo "   Using R at $R_CMD"
 echo ""
 
 # Check and Install RStudio
@@ -141,7 +245,7 @@ curl -L -o "install_packages.R" "https://raw.githubusercontent.com/vnijs/radiant
 check_success "Download package script"
 
 # Run R script
-/usr/local/bin/R --slave --no-restore --file=install_packages.R
+"$R_CMD" --slave --no-restore --file=install_packages.R
 check_success "R packages installation"
 echo ""
 
@@ -154,7 +258,7 @@ echo "   Downloading TinyTeX installation script..."
 curl -L -o "install_tinytex.R" "https://raw.githubusercontent.com/vnijs/radiant_install/main/install_tinytex.R"
 check_success "Download TinyTeX script"
 
-/usr/local/bin/R --slave --no-restore --file=install_tinytex.R
+"$R_CMD" --slave --no-restore --file=install_tinytex.R
 check_success "TinyTeX installation"
 echo ""
 

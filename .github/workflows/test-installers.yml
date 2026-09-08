@@ -56,10 +56,21 @@ jobs:
           }
           
           # Check RStudio installation
-          if (Test-Path "${env:ProgramFiles}\RStudio\rstudio.exe") {
-              Write-Host "RStudio installed in Program Files\RStudio" -ForegroundColor Green
+          $RStudioPath = Get-ChildItem -Path @(
+              "${env:ProgramFiles}\RStudio\rstudio.exe",
+              "${env:ProgramFiles}\RStudio\bin\rstudio.exe",
+              "${env:ProgramFiles(x86)}\RStudio\rstudio.exe",
+              "${env:ProgramFiles(x86)}\RStudio\bin\rstudio.exe"
+          ) -ErrorAction SilentlyContinue | Select-Object -First 1
+
+          if ($RStudioPath) {
+              Write-Host "RStudio installed at: $($RStudioPath.FullName)" -ForegroundColor Green
+              $RStudioVersion = (Get-Item $RStudioPath.FullName).VersionInfo.ProductVersion
+              if ($RStudioVersion) {
+                  Write-Host "   Version: $RStudioVersion" -ForegroundColor Gray
+              }
           } else {
-              Write-Host "RStudio not found" -ForegroundColor Red
+              Write-Host "RStudio not found in Program Files" -ForegroundColor Red
               exit 1
           }
           
@@ -127,7 +138,12 @@ jobs:
           # Check RStudio is removed
           $RStudioPaths = @(
               "${env:ProgramFiles}\RStudio\rstudio.exe",
-              "${env:LocalAppData}\Programs\RStudio\rstudio.exe"
+              "${env:ProgramFiles}\RStudio\bin\rstudio.exe",
+              "${env:ProgramFiles(x86)}\RStudio\rstudio.exe",
+              "${env:ProgramFiles(x86)}\RStudio\bin\rstudio.exe",
+              "${env:LocalAppData}\Programs\RStudio\rstudio.exe",
+              "${env:LocalAppData}\Programs\RStudio\bin\rstudio.exe",
+              "${env:ProgramData}\Microsoft\Windows\Start Menu\Programs\RStudio\RStudio.lnk"
           )
           foreach ($path in $RStudioPaths) {
               if (Test-Path $path) {
@@ -224,9 +240,11 @@ jobs:
           Write-Host "Testing RStudio version check..."
           $RStudioMetadata = Invoke-WebRequest -Uri "https://www.rstudio.com/wp-content/downloads.json" -UseBasicParsing | Select-Object -ExpandProperty Content | ConvertFrom-Json
           $RStudioInstaller = $RStudioMetadata.rstudio.open_source.stable.desktop.installer.windows
-          if ($RStudioInstaller.url -and $RStudioInstaller.version) {
+          $RStudioArchive = $RStudioMetadata.rstudio.open_source.stable.desktop.archive.windows
+          if ($RStudioInstaller.url -and $RStudioInstaller.version -and $RStudioArchive.url) {
               Write-Host "Latest RStudio version detected: $($RStudioInstaller.version)"
-              Write-Host "Download URL: $($RStudioInstaller.url)"
+              Write-Host "Installer URL: $($RStudioInstaller.url)"
+              Write-Host "Archive URL: $($RStudioArchive.url)"
           } else {
               Write-Host "Could not detect RStudio metadata"
               exit 1
@@ -261,10 +279,14 @@ jobs:
           Write-Host "PowerShell version: $($PSVersionTable.PSVersion)"
 
   test-macos-full-install:
-    runs-on: macos-15
-    name: Test macOS Full Installation
+    runs-on: ${{ matrix.os }}
+    name: Test macOS Full Installation (${{ matrix.os }})
     # Only run full install on manual trigger or main branch
     if: github.event_name == 'workflow_dispatch' || (github.event_name == 'push' && github.ref == 'refs/heads/main')
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-15, macos-26]
     steps:
       - name: Checkout repository
         uses: actions/checkout@v5
@@ -287,12 +309,27 @@ jobs:
         run: |
           echo "Verifying installations..."
           
-          # Check R installation
-          if command -v R &> /dev/null; then
-              R_VERSION=$(R --version 2>/dev/null | head -n1)
-              echo "✅ R installed: $R_VERSION"
+          # Check CRAN R installation in the locations RStudio expects
+          CRAN_R="/Library/Frameworks/R.framework/Resources/bin/R"
+          if [ -x "$CRAN_R" ]; then
+              R_VERSION=$("$CRAN_R" --version 2>/dev/null | head -n1)
+              echo "✅ CRAN R framework installed: $R_VERSION"
           else
-              echo "❌ R not found"
+              echo "❌ CRAN R framework binary not found at $CRAN_R"
+              exit 1
+          fi
+
+          if [ -x "/usr/local/bin/R" ]; then
+              echo "✅ CRAN R CLI available at /usr/local/bin/R"
+          else
+              echo "❌ CRAN R CLI not found at /usr/local/bin/R"
+              exit 1
+          fi
+
+          if [ -x "/usr/local/bin/Rscript" ]; then
+              echo "✅ CRAN Rscript CLI available at /usr/local/bin/Rscript"
+          else
+              echo "❌ CRAN Rscript CLI not found at /usr/local/bin/Rscript"
               exit 1
           fi
           
@@ -309,7 +346,7 @@ jobs:
           fi
           
           # Check if radiant package is installed
-          R -e "if ('radiant' %in% rownames(installed.packages())) cat('✅ Radiant package installed\n') else stop('❌ Radiant package not found')"
+          "$CRAN_R" -e "if ('radiant' %in% rownames(installed.packages())) cat('✅ Radiant package installed\n') else stop('❌ Radiant package not found')"
           
           # Check if pdflatex is available (from TinyTeX)
           if command -v pdflatex &> /dev/null; then
@@ -358,6 +395,16 @@ jobs:
           else
               echo "✅ R framework removed"
           fi
+
+          # Check CRAN R CLI symlinks are removed, including broken symlinks
+          for r_link in "/usr/local/bin/R" "/usr/local/bin/Rscript"; do
+              if [ -e "$r_link" ] || [ -L "$r_link" ]; then
+                  echo "❌ ERROR: R CLI link still exists at $r_link"
+                  errors_found=true
+              else
+                  echo "✅ Removed $r_link"
+              fi
+          done
           
           # Check RStudio is removed
           if [ -d "/Applications/RStudio.app" ]; then
@@ -391,8 +438,12 @@ jobs:
           fi
 
   test-macos:
-    runs-on: macos-15
-    name: Test macOS Installer
+    runs-on: ${{ matrix.os }}
+    name: Test macOS Installer (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-15, macos-26]
     steps:
       - name: Checkout repository
         uses: actions/checkout@v5
@@ -406,11 +457,34 @@ jobs:
       - name: Test script logic (dry-run)
         run: |
           echo "Testing script logic without installing..."
-          
+
+          version_at_least() {
+              local version="$1"
+              local minimum="$2"
+              local IFS=.
+              local version_parts minimum_parts i version_part minimum_part
+
+              read -ra version_parts <<< "$version"
+              read -ra minimum_parts <<< "$minimum"
+
+              for ((i = 0; i < ${#minimum_parts[@]}; i++)); do
+                  version_part=${version_parts[i]:-0}
+                  minimum_part=${minimum_parts[i]:-0}
+
+                  if ((10#$version_part > 10#$minimum_part)); then
+                      return 0
+                  elif ((10#$version_part < 10#$minimum_part)); then
+                      return 1
+                  fi
+              done
+
+              return 0
+          }
+
           # Test macOS version check
           echo "Testing macOS version check..."
           macos_version=$(sw_vers -productVersion)
-          if [[ $(echo "$macos_version 14.0" | tr " " "\n" | sort -V | head -n1) != "14.0" ]]; then
+          if ! version_at_least "$macos_version" "14.0"; then
               echo "❌ macOS version check failed"
               exit 1
           fi
@@ -418,14 +492,86 @@ jobs:
           
           # Test R version detection
           echo "Testing R version detection from CRAN..."
-          LATEST_R_VERSION=$(curl -s "https://cloud.r-project.org/bin/macosx/" | grep -o 'R-[0-9]\+\.[0-9]\+\.[0-9]\+' | head -n1 | cut -d'-' -f2)
-          if [[ -n "$LATEST_R_VERSION" ]]; then
-              echo "✅ Latest R version detected: $LATEST_R_VERSION"
+          CRAN_MACOS_URL="https://cloud.r-project.org/bin/macosx/"
+          CRAN_MACOS_PAGE=$(curl -fsSL "$CRAN_MACOS_URL")
+          if [[ $(uname -m) == "x86_64" ]]; then
+              R_PKG_RELATIVE=$(printf "%s\n" "$CRAN_MACOS_PAGE" | sed -n 's/.*href="\([^"]*R-[0-9][0-9.]*-x86_64\.pkg\)".*/\1/p' | head -n1)
           else
-              echo "❌ Could not detect R version"
+              R_PKG_RELATIVE=$(printf "%s\n" "$CRAN_MACOS_PAGE" | sed -n 's/.*href="\([^"]*R-[0-9][0-9.]*-arm64\.pkg\)".*/\1/p' | head -n1)
+          fi
+          R_PKG_URL="${CRAN_MACOS_URL}${R_PKG_RELATIVE}"
+          if [[ "$R_PKG_RELATIVE" =~ R-([0-9]+\.[0-9]+\.[0-9]+)- ]]; then
+              LATEST_R_VERSION="${BASH_REMATCH[1]}"
+          else
+              LATEST_R_VERSION=""
+          fi
+          if [[ -n "$LATEST_R_VERSION" && -n "$R_PKG_RELATIVE" ]]; then
+              echo "✅ Latest R version detected: $LATEST_R_VERSION"
+              echo "✅ R package URL detected: $R_PKG_URL"
+          else
+              echo "❌ Could not detect R package URL"
               exit 1
           fi
-          
+
+          # Test that a nonstandard R on PATH does not satisfy the CRAN R check.
+          echo "Testing nonstandard PATH R detection..."
+          fake_bin="$RUNNER_TEMP/fake-nix-profile/bin"
+          mkdir -p "$fake_bin"
+          cat > "$fake_bin/R" <<'EOF'
+          #!/bin/bash
+          if [ "$1" = "--version" ]; then
+              echo "R version 9.9.9 (fake Nix-profile R)"
+          elif [ "$1" = "RHOME" ]; then
+              echo "/nix/store/fake-r/lib/R"
+          else
+              exit 0
+          fi
+          EOF
+          chmod +x "$fake_bin/R"
+          PATH="$fake_bin:$PATH"
+
+          CRAN_R_FRAMEWORK="/Library/Frameworks/R.framework"
+          CRAN_R_FRAMEWORK_BIN="$CRAN_R_FRAMEWORK/Resources/bin/R"
+          CRAN_R_CLI="/usr/local/bin/R"
+
+          is_cran_r() {
+              local r_bin="$1"
+              local r_home
+
+              if [ ! -x "$r_bin" ]; then
+                  return 1
+              fi
+
+              r_home=$("$r_bin" RHOME 2>/dev/null | head -n1 || true)
+              [[ "$r_home" == "$CRAN_R_FRAMEWORK/Resources"* ]]
+          }
+
+          find_cran_r() {
+              if is_cran_r "$CRAN_R_CLI"; then
+                  echo "$CRAN_R_CLI"
+                  return 0
+              fi
+
+              if [ -x "$CRAN_R_FRAMEWORK_BIN" ]; then
+                  echo "$CRAN_R_FRAMEWORK_BIN"
+                  return 0
+              fi
+
+              return 1
+          }
+
+          PATH_R=$(command -v R || true)
+          CRAN_R_BIN=$(find_cran_r || true)
+          if [[ "$PATH_R" != "$fake_bin/R" ]]; then
+              echo "❌ Fake PATH R was not first on PATH"
+              exit 1
+          fi
+          if [[ "$CRAN_R_BIN" == "$PATH_R" ]]; then
+              echo "❌ Nonstandard PATH R was accepted as CRAN R"
+              exit 1
+          fi
+          echo "✅ Nonstandard PATH R ignored"
+
           # Test RStudio URL extraction
           echo "Testing RStudio version detection..."
           RSTUDIO_URL=$(curl -fsSLI -o /dev/null -w '%{url_effective}' "https://rstudio.org/download/latest/stable/desktop/mac/RStudio-latest.dmg")

@@ -1,5 +1,7 @@
 # Radiant Uninstall Script for Windows
 # This script removes R, RStudio, and all associated files
+# Use the following command to run the latest version of this script:
+# iwr -useb https://raw.githubusercontent.com/vnijs/radiant_install/main/windows-uninstall-radiant.ps1 | iex
 
 # Error handler to ensure window stays open
 trap {
@@ -14,8 +16,45 @@ trap {
     exit 1
 }
 
-# Require Administrator privileges
+# Handle running from iwr | iex (no $PSCommandPath available)
+if (-not $PSCommandPath) {
+    # Without this block the elevation below relaunches with -File "" (because
+    # $PSCommandPath is $null under `iex`), which makes the new window exit
+    # immediately - it just flashes on screen. Save the script to a temp file
+    # first so there is something real to relaunch.
+    $ScriptUrl = "https://raw.githubusercontent.com/vnijs/radiant_install/main/windows-uninstall-radiant.ps1"
+    $TempScript = "$env:TEMP\radiant-uninstall-$(Get-Random).ps1"
+    try {
+        $ScriptBody = (New-Object System.Net.WebClient).DownloadString($ScriptUrl)
+    } catch {
+        Write-Host "[ERROR] Could not download the uninstall script from $ScriptUrl" -ForegroundColor Red
+        Write-Host "   Error: $_" -ForegroundColor Red
+        Write-Host ""
+        Write-Host "Press Enter to close this window..." -ForegroundColor Yellow
+        Read-Host
+        exit 1
+    }
+    # Write without a BOM so powershell.exe -File parses it cleanly
+    [System.IO.File]::WriteAllText($TempScript, $ScriptBody, (New-Object System.Text.UTF8Encoding($false)))
+
+    if (-NOT ([Security.Principal.WindowsPrincipal] [Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole] "Administrator")) {
+        Write-Host "This script requires Administrator privileges. Opening Administrator PowerShell..." -ForegroundColor Yellow
+        Write-Host "The uninstall will continue in the new window..." -ForegroundColor Gray
+        Start-Process powershell.exe "-NoExit -NoProfile -ExecutionPolicy Bypass -File `"$TempScript`"" -Verb RunAs
+        exit
+    }
+}
+
+# Require Administrator privileges (for direct file execution)
 if (-NOT ([Security.Principal.WindowsPrincipal] [Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole] "Administrator")) {
+    if (-not $PSCommandPath) {
+        Write-Host "[ERROR] Cannot restart as Administrator: the script path is unknown." -ForegroundColor Red
+        Write-Host "   Re-run with: iwr -useb $ScriptUrl | iex" -ForegroundColor Gray
+        Write-Host ""
+        Write-Host "Press Enter to close this window..." -ForegroundColor Yellow
+        Read-Host
+        exit 1
+    }
     Write-Host "This script requires Administrator privileges. Restarting as Administrator..." -ForegroundColor Yellow
     Start-Process powershell.exe "-NoExit -NoProfile -ExecutionPolicy Bypass -File `"$PSCommandPath`"" -Verb RunAs
     exit
@@ -92,20 +131,59 @@ Write-Host ""
 # 2. Uninstall RStudio
 Write-Host "Step 2: Removing RStudio..." -ForegroundColor Yellow
 
-# Check for RStudio uninstaller in multiple locations
-$RStudioUninstallers = @(
-    "${env:ProgramFiles}\RStudio\Uninstall.exe",
-    "${env:ProgramFiles(x86)}\RStudio\Uninstall.exe",
-    "${env:LocalAppData}\Programs\RStudio\Uninstall.exe"
-)
+# Locate RStudio's own uninstall registration. Windows records the exact silent
+# command in QuietUninstallString, which for current RStudio is:
+#   "C:\Program Files\RStudio\Uninstall.exe" /allusers /S
+# A bare "/S" is NOT enough - the Electron/NSIS build needs an explicit install
+# mode, exactly like the installer needs "/S /allusers". Without it the
+# uninstaller exits immediately having done nothing, and the only reason the
+# files disappear is the brute-force directory removal below - which then leaves
+# a dead entry in "Installed apps" pointing at a path that no longer exists.
+function Get-RStudioUninstallKey {
+    Get-ItemProperty -ErrorAction SilentlyContinue -Path @(
+        'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\*',
+        'HKLM:\SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall\*'
+    ) | Where-Object { $_.DisplayName -like 'RStudio*' } | Select-Object -First 1
+}
 
+$RStudioKey = Get-RStudioUninstallKey
 $foundUninstaller = $false
-foreach ($uninstaller in $RStudioUninstallers) {
-    if (Test-Path $uninstaller) {
-        Write-Host "   Running RStudio uninstaller..." -ForegroundColor Gray
-        Start-Process -FilePath $uninstaller -ArgumentList "/S" -Wait
+
+if ($RStudioKey -and $RStudioKey.QuietUninstallString) {
+    # Prefer the command RStudio registered for itself
+    if ($RStudioKey.QuietUninstallString -match '^\s*"([^"]+)"\s*(.*)$') {
+        $unExe = $matches[1]
+        $unArgs = $matches[2].Trim()
+    } else {
+        $unExe = ($RStudioKey.QuietUninstallString -split '\s+')[0]
+        $unArgs = "/allusers /S"
+    }
+    if (Test-Path $unExe) {
+        Write-Host "   Running RStudio uninstaller ($unArgs)..." -ForegroundColor Gray
+        $proc = Start-Process -FilePath $unExe -ArgumentList $unArgs -Wait -PassThru
+        if ($proc.ExitCode -ne 0) {
+            Write-Host "   [WARNING] RStudio uninstaller exited with code $($proc.ExitCode)" -ForegroundColor Yellow
+        }
         $foundUninstaller = $true
-        break
+    }
+}
+
+if (-not $foundUninstaller) {
+    $RStudioUninstallers = @(
+        "${env:ProgramFiles}\RStudio\Uninstall.exe",
+        "${env:ProgramFiles(x86)}\RStudio\Uninstall.exe",
+        "${env:LocalAppData}\Programs\RStudio\Uninstall.exe"
+    )
+    foreach ($uninstaller in $RStudioUninstallers) {
+        if (Test-Path $uninstaller) {
+            Write-Host "   Running RStudio uninstaller (/allusers /S)..." -ForegroundColor Gray
+            $proc = Start-Process -FilePath $uninstaller -ArgumentList "/allusers", "/S" -Wait -PassThru
+            if ($proc.ExitCode -ne 0) {
+                Write-Host "   [WARNING] RStudio uninstaller exited with code $($proc.ExitCode)" -ForegroundColor Yellow
+            }
+            $foundUninstaller = $true
+            break
+        }
     }
 }
 
@@ -125,9 +203,37 @@ Remove-ItemSafely "$env:APPDATA\RStudio" "RStudio user data"
 Remove-ItemSafely "$env:LOCALAPPDATA\RStudio" "RStudio local data"
 Remove-ItemSafely "$env:LOCALAPPDATA\RStudio-Desktop" "RStudio desktop data"
 
-# Remove RStudio from Start Menu
+# Remove RStudio from Start Menu. Current RStudio creates a single shortcut FILE
+# (Programs\RStudio.lnk), not a folder, so both shapes have to be handled.
 Remove-ItemSafely "$env:ProgramData\Microsoft\Windows\Start Menu\Programs\RStudio" "RStudio Start Menu shortcuts"
 Remove-ItemSafely "$env:APPDATA\Microsoft\Windows\Start Menu\Programs\RStudio" "RStudio user Start Menu shortcuts"
+Remove-ItemSafely "$env:ProgramData\Microsoft\Windows\Start Menu\Programs\RStudio.lnk" "RStudio Start Menu shortcut"
+Remove-ItemSafely "$env:APPDATA\Microsoft\Windows\Start Menu\Programs\RStudio.lnk" "RStudio user Start Menu shortcut"
+Remove-ItemSafely "$env:PUBLIC\Desktop\RStudio.lnk" "RStudio desktop shortcut"
+Remove-ItemSafely "$env:USERPROFILE\Desktop\RStudio.lnk" "RStudio user desktop shortcut"
+
+# If the uninstaller did not run (or no-opped), Windows would still list RStudio in
+# "Installed apps" with an uninstall command pointing at files we just deleted.
+$LeftoverRStudioKey = Get-RStudioUninstallKey
+if ($LeftoverRStudioKey) {
+    $stillInstalled = @(
+        "${env:ProgramFiles}\RStudio\rstudio.exe",
+        "${env:ProgramFiles(x86)}\RStudio\rstudio.exe",
+        "${env:LocalAppData}\Programs\RStudio\rstudio.exe"
+    ) | Where-Object { Test-Path $_ }
+
+    if (-not $stillInstalled) {
+        Write-Host "   Removing stale RStudio entry from Installed apps..." -ForegroundColor Gray
+        try {
+            Remove-Item -Path $LeftoverRStudioKey.PSPath -Recurse -Force -ErrorAction Stop
+            Write-Host "   [OK] Removed stale RStudio registry entry" -ForegroundColor Green
+        } catch {
+            Write-Host "   [WARNING] Could not remove RStudio registry entry: $_" -ForegroundColor Yellow
+        }
+    } else {
+        Write-Host "   [WARNING] RStudio still present at: $($stillInstalled -join ', ')" -ForegroundColor Yellow
+    }
+}
 
 Write-Host "[OK] RStudio removed" -ForegroundColor Green
 Write-Host ""

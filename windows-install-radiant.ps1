@@ -4,10 +4,23 @@
 
 # Handle running from iwr | iex (no $PSCommandPath available)
 if (-not $PSCommandPath) {
-    # Save script to temp file for proper execution with admin privileges
+    # Save script to temp file for proper execution with admin privileges.
+    # NOTE: when this script is piped from `iwr | iex`, $MyInvocation.MyCommand.ScriptBlock
+    # is the caller's one-line command ("iwr ... | iex"), NOT this script. Writing that to
+    # the temp file makes the elevated window re-bootstrap instead of running the script we
+    # already downloaded. Re-download the real script body instead.
+    $ScriptUrl = "https://raw.githubusercontent.com/vnijs/radiant_install/main/windows-install-radiant.ps1"
     $TempScript = "$env:TEMP\radiant-install-$(Get-Random).ps1"
-    $MyInvocation.MyCommand.ScriptBlock | Out-File -FilePath $TempScript -Encoding UTF8
-    
+    try {
+        $ScriptBody = (New-Object System.Net.WebClient).DownloadString($ScriptUrl)
+    } catch {
+        Write-Host "[ERROR] Could not download the installer script from $ScriptUrl" -ForegroundColor Red
+        Write-Host "   Error: $_" -ForegroundColor Red
+        exit 1
+    }
+    # Write without a BOM so powershell.exe -File parses it cleanly
+    [System.IO.File]::WriteAllText($TempScript, $ScriptBody, (New-Object System.Text.UTF8Encoding($false)))
+
     if (-NOT ([Security.Principal.WindowsPrincipal] [Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole] "Administrator")) {
         Write-Host "This script requires Administrator privileges. Opening Administrator PowerShell..." -ForegroundColor Yellow
         Write-Host "The installation will continue in the new window..." -ForegroundColor Gray
@@ -375,14 +388,21 @@ if ($CurrentRVersion -eq $LatestRVersion -and -not $RInProgramFiles) {
     # Silent install with custom directory
     $RInstallerPath = Join-Path (Get-Location) "R-installer.exe"
     Invoke-Installer -FilePath $RInstallerPath -ArgumentList "/VERYSILENT /DIR=`"$SystemDrive\R\R-$LatestRVersion`"" -Description "R installation"
+}
 
-    # Add R to PATH if not already there
-    $RBinPath = "$SystemDrive\R\R-$LatestRVersion\bin\x64"
+# Always make sure R is on PATH. This used to live inside the install branch above, so a
+# machine whose R was already up to date could be left with R missing from PATH.
+$RBinDir = Get-ChildItem "$SystemDrive\R\R-*\bin\x64" -ErrorAction SilentlyContinue |
+           Sort-Object Name | Select-Object -Last 1
+if ($RBinDir) {
+    $RBinPath = $RBinDir.FullName
     $CurrentPath = [Environment]::GetEnvironmentVariable("Path", "Machine")
     if ($CurrentPath -notlike "*$RBinPath*") {
         [Environment]::SetEnvironmentVariable("Path", "$CurrentPath;$RBinPath", "Machine")
-        $env:Path = "$env:Path;$RBinPath"
         Write-Host "   Added R to system PATH" -ForegroundColor Gray
+    }
+    if ($env:Path -notlike "*$RBinPath*") {
+        $env:Path = "$env:Path;$RBinPath"
     }
 }
 Write-Host ""
@@ -524,7 +544,27 @@ foreach ($path in $7ZipPaths) {
 }
 
 if (-not $7ZipInstalled) {
-    $7ZipURL = "https://www.7-zip.org/a/7z2501-x64.exe"
+    # Resolve the current 7-Zip build rather than pinning a version that 404s as soon as
+    # 7-Zip publishes a new release. The home page advertises the current version as
+    # "7-Zip 26.03 (2026-09-03)", which maps to /a/7z2603-x64.exe. Note that download.html
+    # lists only OLD releases, so it must not be used here - it would downgrade 7-Zip.
+    # Verify whatever we derive with a HEAD request and fall back to a known-good build.
+    $7ZipFallbackURL = "https://www.7-zip.org/a/7z2501-x64.exe"
+    $7ZipURL = $null
+    try {
+        $7ZipPage = Invoke-WebRequest -Uri "https://www.7-zip.org/" -UseBasicParsing
+        if ($7ZipPage.Content -match '7-Zip\s+(\d+)\.(\d+)\s*\(') {
+            $7ZipToken = "{0}{1:D2}" -f $matches[1], [int]$matches[2]
+            $7ZipCandidate = "https://www.7-zip.org/a/7z$7ZipToken-x64.exe"
+            $null = Invoke-WebRequest -Uri $7ZipCandidate -Method Head -UseBasicParsing
+            $7ZipURL = $7ZipCandidate
+        }
+    } catch {
+        Write-Host "   Could not resolve the latest 7-Zip release, using a known build" -ForegroundColor Yellow
+    }
+    if (-not $7ZipURL) {
+        $7ZipURL = $7ZipFallbackURL
+    }
     if (-not (Download-File -Url $7ZipURL -OutFile "7zip-installer.exe" -Description "7-Zip installer")) {
         exit 1
     }

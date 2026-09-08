@@ -112,10 +112,13 @@ foreach ($uninstaller in $RStudioUninstallers) {
 if (-not $foundUninstaller) {
     # Manual removal if uninstaller not found
     Write-Host "   No uninstaller found, removing manually..." -ForegroundColor Yellow
-    Remove-ItemSafely "${env:ProgramFiles}\RStudio" "RStudio program files"
-    Remove-ItemSafely "${env:ProgramFiles(x86)}\RStudio" "RStudio program files (x86)"
-    Remove-ItemSafely "${env:LocalAppData}\Programs\RStudio" "RStudio local installation"
 }
+
+# Current RStudio installers can leave files behind after the silent uninstaller
+# returns, so remove the known install roots even when an uninstaller ran.
+Remove-ItemSafely "${env:ProgramFiles}\RStudio" "RStudio program files"
+Remove-ItemSafely "${env:ProgramFiles(x86)}\RStudio" "RStudio program files (x86)"
+Remove-ItemSafely "${env:LocalAppData}\Programs\RStudio" "RStudio local installation"
 
 # Remove RStudio user data
 Remove-ItemSafely "$env:APPDATA\RStudio" "RStudio user data"

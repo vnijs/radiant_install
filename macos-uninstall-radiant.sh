@@ -18,14 +18,18 @@ echo "🔧 Starting uninstallation process..."
 echo ""
 
 # Function to remove items with feedback
+item_exists() {
+    [ -e "$1" ] || [ -L "$1" ]
+}
+
 remove_item() {
     local item="$1"
     local description="$2"
     
-    if [ -e "$item" ]; then
+    if item_exists "$item"; then
         echo "   Removing $description..."
         sudo rm -rf "$item" 2>/dev/null || true
-        if [ -e "$item" ]; then
+        if item_exists "$item"; then
             echo "   ⚠️  Could not remove: $description"
         else
             echo "   ✅ Removed: $description"
@@ -62,12 +66,12 @@ echo "Step 2: Removing R..."
 pkill -f "/Library/Frameworks/R.framework" 2>/dev/null
 pkill -f "/usr/local/bin/R" 2>/dev/null
 
-# Remove R framework
-remove_item "/Library/Frameworks/R.framework" "R framework"
-
-# Remove R from /usr/local/bin
+# Remove CRAN R CLI symlinks before the framework so broken links do not remain.
 remove_item "/usr/local/bin/R" "R binary symlink"
 remove_item "/usr/local/bin/Rscript" "Rscript symlink"
+
+# Remove R framework
+remove_item "/Library/Frameworks/R.framework" "R framework"
 
 # Remove R GUI if present
 remove_item "/Applications/R.app" "R GUI application"
@@ -79,7 +83,14 @@ sudo pkgutil --forget org.r-project.R.GUI.pkg 2>/dev/null
 sudo pkgutil --forget org.r-project.arm64 2>/dev/null
 sudo pkgutil --forget org.r-project.x86_64 2>/dev/null
 
-echo "✅ R removed"
+hash -r 2>/dev/null || true
+remaining_r=$(command -v R || true)
+if [ -n "$remaining_r" ]; then
+    echo "   Note: R is still on PATH at $remaining_r"
+    echo "   This script removes CRAN R from /Library/Frameworks and /usr/local/bin only"
+fi
+
+echo "✅ CRAN R removed"
 echo ""
 
 # 3. Remove R packages and libraries

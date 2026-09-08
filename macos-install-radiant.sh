@@ -119,10 +119,25 @@ echo "   Checking latest R version from CRAN..."
 CRAN_MACOS_URL="https://cloud.r-project.org/bin/macosx/"
 CRAN_MACOS_PAGE=$(curl -fsSL "$CRAN_MACOS_URL")
 if [[ $(uname -m) == "x86_64" ]]; then
-    R_PKG_RELATIVE=$(printf "%s\n" "$CRAN_MACOS_PAGE" | sed -n 's/.*href="\([^"]*R-[0-9][0-9.]*-x86_64\.pkg\)".*/\1/p' | head -n1)
+    R_ARCH="x86_64"
 else
-    R_PKG_RELATIVE=$(printf "%s\n" "$CRAN_MACOS_PAGE" | sed -n 's/.*href="\([^"]*R-[0-9][0-9.]*-arm64\.pkg\)".*/\1/p' | head -n1)
+    R_ARCH="arm64"
 fi
+
+# Take the HIGHEST version advertised for this architecture, not the first one
+# on the page.
+#
+# CRAN publishes one build directory per macOS baseline and freezes the old one
+# when a new baseline appears: big-sur-arm64 stopped at R 4.5.3 while
+# sonoma-arm64 carries 4.6.x. If a frozen directory is ever listed above the
+# current one, `head -n1` installs the stale release -- and because the version
+# check would still report the newer one, the installed version could never
+# match the detected one and the script would reinstall R on every single run.
+# Sorting on the version keeps the choice independent of page order.
+R_PKG_RELATIVE=$(printf "%s\n" "$CRAN_MACOS_PAGE" \
+    | sed -n "s/.*href=\"\([^\"]*R-[0-9][0-9.]*-${R_ARCH}\.pkg\)\".*/\1/p" \
+    | sed -E "s|^(.*R-([0-9]+\.[0-9]+\.[0-9]+)-${R_ARCH}\.pkg)$|\2\t\1|" \
+    | sort -V | tail -n1 | cut -f2)
 
 if [[ -z "$R_PKG_RELATIVE" ]]; then
     echo "❌ Could not determine R package URL"

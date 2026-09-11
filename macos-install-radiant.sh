@@ -45,10 +45,17 @@ fi
 echo "✅ macOS $macos_version - compatible"
 echo ""
 
-# Create temporary directory
-TEMP_DIR=$(mktemp -d)
+# Create temp directories under paths without spaces. R creates R_TempDir before
+# install_packages.R runs, so TMPDIR/TMP/TEMP must be safe before launching R.
+TEMP_DIR=$(mktemp -d "/tmp/radiant-install.XXXXXX")
+R_TEMP_DIR=$(mktemp -d "/tmp/radiant-r-temp.XXXXXX")
+export TMPDIR="$R_TEMP_DIR"
+export TMP="$R_TEMP_DIR"
+export TEMP="$R_TEMP_DIR"
+
 cd "$TEMP_DIR"
 echo "📁 Working in temporary directory: $TEMP_DIR"
+echo "📁 Using R temporary directory: $R_TEMP_DIR"
 echo ""
 
 # Function to check if command succeeded
@@ -279,7 +286,7 @@ echo ""
 
 # Cleanup
 cd /
-rm -rf "$TEMP_DIR"
+rm -rf "$TEMP_DIR" "$R_TEMP_DIR"
 echo "🧹 Cleaned up temporary files"
 echo ""
 

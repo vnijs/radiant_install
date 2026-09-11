@@ -50,10 +50,29 @@ $ErrorActionPreference = "Stop"
 # Disable progress bar for much faster downloads
 $ProgressPreference = 'SilentlyContinue'
 
-# Create temp directory
-$TEMP_DIR = New-TemporaryFile | ForEach-Object { Remove-Item $_; New-Item -ItemType Directory -Path $_ }
+# Create temp directories under a path without spaces. R creates R_TempDir before
+# install_packages.R runs, so TEMP/TMP/TMPDIR must be safe before launching R.
+$SYSTEM_ROOT = [System.IO.Path]::GetPathRoot($env:SystemRoot)
+if ([string]::IsNullOrWhiteSpace($SYSTEM_ROOT)) {
+    $SYSTEM_ROOT = "$($env:SystemDrive)\"
+}
+$SAFE_TEMP_ROOT = Join-Path $SYSTEM_ROOT "RadiantTemp"
+New-Item -ItemType Directory -Path $SAFE_TEMP_ROOT -Force | Out-Null
+
+$INSTALL_ID = ([guid]::NewGuid()).ToString("N")
+$TEMP_DIR = Join-Path $SAFE_TEMP_ROOT "radiant-install-$INSTALL_ID"
+New-Item -ItemType Directory -Path $TEMP_DIR -Force | Out-Null
+
+$R_TEMP_DIR = Join-Path $SAFE_TEMP_ROOT "r-temp-$INSTALL_ID"
+New-Item -ItemType Directory -Path $R_TEMP_DIR -Force | Out-Null
+
+$env:TMPDIR = $R_TEMP_DIR
+$env:TEMP = $R_TEMP_DIR
+$env:TMP = $R_TEMP_DIR
+
 Set-Location $TEMP_DIR
 Write-Host "Working in temporary directory: $TEMP_DIR" -ForegroundColor Gray
+Write-Host "Using R temporary directory: $R_TEMP_DIR" -ForegroundColor Gray
 Write-Host ""
 
 # Function to check success
@@ -626,8 +645,12 @@ Check-Success "TinyTeX installation"
 Write-Host ""
 
 # Cleanup
-Set-Location $env:TEMP
-Remove-Item -Path $TEMP_DIR -Recurse -Force
+Set-Location ([System.IO.Path]::GetPathRoot($SAFE_TEMP_ROOT))
+foreach ($Path in @($TEMP_DIR, $R_TEMP_DIR)) {
+    if (Test-Path $Path) {
+        Remove-Item -Path $Path -Recurse -Force
+    }
+}
 Write-Host "Cleaned up temporary files" -ForegroundColor Gray
 Write-Host ""
 
